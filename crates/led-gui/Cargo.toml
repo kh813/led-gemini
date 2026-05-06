@@ -1,0 +1,13 @@
+[package]
+name = "led-gui"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "led-gui"
+path = "src/main.rs"
+
+[dependencies]
+led-core = { path = "../led-core" }
+# gpui will be added in Phase 13
+anyhow   = { workspace = true }
