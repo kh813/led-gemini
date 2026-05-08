@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use anyhow::Result;
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::renderer::{Renderer, Cell};
 use crate::layout::Layout;
 use crate::widgets::menu::{Menu, MenuItem};
@@ -95,7 +95,7 @@ impl App {
         } else {
             for path in paths {
                 if path.is_dir() {
-                    errors.push(format!("Cannot open directory: {}", path.display()));
+                    errors.push(i18n.get("error.cannot_open_dir").replace("{path}", &path.display().to_string()));
                     continue;
                 }
                 match Editor::from_file(&path) {
@@ -112,7 +112,9 @@ impl App {
                         buffers.push(editor);
                     }
                     Err(e) => {
-                        errors.push(format!("Failed to open {}: {}", path.display(), e));
+                        errors.push(i18n.get("error.failed_to_open")
+                            .replace("{path}", &path.display().to_string())
+                            .replace("{error}", &e.to_string()));
                     }
                 }
             }
@@ -171,9 +173,9 @@ impl App {
         if !errors.is_empty() {
             let message = errors.join("\n");
             app.current_dialog = Some(Box::new(dialog::MessageDialog::new(
-                i18n.get("error"),
+                app.i18n.get("error").to_string(),
                 message,
-                dialog::MessageType::Error,
+                vec![(app.i18n.get("dialog.ok").to_string(), dialog::Action::Confirm)],
             )));
             app.focus = Focus::Dialog;
         }
@@ -939,11 +941,11 @@ impl App {
                                     self.pending_op = PendingOp::SaveAs; // Keep op
                                     self.target_path = Some(path.clone());
                                     self.current_dialog = Some(Box::new(dialog::MessageDialog::new(
-                                        "Confirm Overwrite".to_string(),
-                                        format!("File '{}' already exists. Overwrite?", path.file_name().unwrap_or_default().to_string_lossy()),
+                                        self.i18n.get("dialog.overwrite_prompt").to_string(),
+                                        self.i18n.get("dialog.overwrite_prompt").replace("{filename}", &path.file_name().unwrap_or_default().to_string_lossy()),
                                         vec![
-                                            ("Overwrite".to_string(), dialog::Action::Save),
-                                            ("Cancel".to_string(), dialog::Action::Cancel),
+                                            (self.i18n.get("dialog.yes").to_string(), dialog::Action::Save),
+                                            (self.i18n.get("dialog.no").to_string(), dialog::Action::Cancel),
                                         ]
                                     )));
                                     return;
@@ -1460,7 +1462,7 @@ impl App {
             Action::Open => {
                 self.focus = Focus::Dialog;
                 self.pending_op = PendingOp::Open;
-                self.current_dialog = Some(Box::new(dialog::OpenDialog::new()));
+                self.current_dialog = Some(Box::new(dialog::OpenDialog::new(&self.i18n)));
             }
             Action::Save => {
                 let needs_save_as = if let Some(buffer) = self.buffers.get_mut(self.active_buffer) {
@@ -1481,16 +1483,17 @@ impl App {
                 self.focus = Focus::Dialog;
                 self.pending_op = PendingOp::SaveAs;
                 let current_path = self.buffers.get(self.active_buffer).and_then(|b| b.path.as_ref());
-                self.current_dialog = Some(Box::new(dialog::SaveAsDialog::new(current_path)));
+                self.current_dialog = Some(Box::new(dialog::SaveAsDialog::new(current_path, &self.i18n)));
             }
             Action::Close => {
                 if let Some(buffer) = self.buffers.get(self.active_buffer) {
                     if buffer.is_modified() {
                         self.focus = Focus::Dialog;
                         self.pending_op = PendingOp::Close;
+                        let filename = buffer.path.as_ref().and_then(|p| p.file_name()).map(|f| f.to_string_lossy()).unwrap_or_else(|| std::borrow::Cow::Borrowed(self.i18n.get("status.no_name")));
                         self.current_dialog = Some(Box::new(dialog::MessageDialog::new(
-                            self.i18n.get("dialog.unsaved.title").to_string(),
-                            self.i18n.get("dialog.unsaved.message").to_string(),
+                            self.i18n.get("dialog.unsaved_changes_title").to_string(),
+                            self.i18n.get("dialog.unsaved_changes").replace("{filename}", &filename),
                             vec![
                                 (self.i18n.get("dialog.save").to_string(), dialog::Action::Save),
                                 (self.i18n.get("dialog.dont_save").to_string(), dialog::Action::DontSave),
@@ -1532,9 +1535,10 @@ impl App {
                         if buffer.is_modified() {
                             self.focus = Focus::Dialog;
                             self.pending_op = PendingOp::Exit;
+                            let filename = buffer.path.as_ref().and_then(|p| p.file_name()).map(|f| f.to_string_lossy()).unwrap_or_else(|| std::borrow::Cow::Borrowed(self.i18n.get("status.no_name")));
                             self.current_dialog = Some(Box::new(dialog::MessageDialog::new(
-                                self.i18n.get("dialog.unsaved.title").to_string(),
-                                self.i18n.get("dialog.unsaved.message").to_string(),
+                                self.i18n.get("dialog.unsaved_changes_title").to_string(),
+                                self.i18n.get("dialog.unsaved_changes").replace("{filename}", &filename),
                                 vec![
                                     (self.i18n.get("dialog.save").to_string(), dialog::Action::Save),
                                     (self.i18n.get("dialog.dont_save").to_string(), dialog::Action::DontSave),
@@ -1543,6 +1547,7 @@ impl App {
                             )));
                             return;
                         }
+
                     }
                 }
                 self.running = false;
@@ -2100,7 +2105,7 @@ impl App {
             let name = buffer.path.as_ref()
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| "[No Name]".to_string());
+                .unwrap_or_else(|| self.i18n.get("status.no_name").to_string());
             let modified = if buffer.is_modified() { "[+] " } else { "" };
             let ro = if buffer.read_only { "[RO] " } else { "" };
             let label = format!(" {}{}{} × ", ro, modified, name);
@@ -2145,12 +2150,12 @@ impl App {
         }
 
         // Row 1: Find input
-        let find_label = "Find:    ";
+        let find_label = format!("{}    ", self.i18n.get("panel.find"));
         for (i, c) in find_label.chars().enumerate() {
             self.renderer.set_cell(x + i as u16 + 1, y, Cell { ch: c, bg: normal_bg, fg: normal_fg, ..Default::default() });
         }
         
-        let input_x = x + find_label.len() as u16 + 1;
+        let input_x = x + find_label.chars().count() as u16 + 1;
         let input_w = 30;
         let is_find_focused = self.find_panel.focused_field == PanelField::FindInput;
         let input_bg = if is_find_focused { focused_bg } else { normal_bg };
@@ -2172,7 +2177,7 @@ impl App {
         // Buttons
         let mut cur_x = input_x + input_w + 2;
         
-        let prev_btn = " < Prev ";
+        let prev_btn = format!(" {} ", self.i18n.get("panel.prev"));
         let is_prev_focused = self.find_panel.focused_field == PanelField::Prev;
         for (i, c) in prev_btn.chars().enumerate() {
             self.renderer.set_cell(cur_x + i as u16, y, Cell {
@@ -2182,9 +2187,9 @@ impl App {
                 ..Default::default()
             });
         }
-        cur_x += prev_btn.len() as u16 + 1;
+        cur_x += prev_btn.chars().count() as u16 + 1;
 
-        let next_btn = " > Next ";
+        let next_btn = format!(" {} ", self.i18n.get("panel.next"));
         let is_next_focused = self.find_panel.focused_field == PanelField::Next;
         for (i, c) in next_btn.chars().enumerate() {
             self.renderer.set_cell(cur_x + i as u16, y, Cell {
@@ -2194,9 +2199,9 @@ impl App {
                 ..Default::default()
             });
         }
-        cur_x += next_btn.len() as u16 + 1;
+        cur_x += next_btn.chars().count() as u16 + 1;
 
-        let close_btn = " Close ";
+        let close_btn = format!(" {} ", self.i18n.get("panel.close"));
         let is_close_focused = self.find_panel.focused_field == PanelField::Close;
         for (i, c) in close_btn.chars().enumerate() {
             self.renderer.set_cell(cur_x + i as u16, y, Cell {
@@ -2210,7 +2215,7 @@ impl App {
         // Row 2: Replace or Toggles
         if self.find_panel.is_replace_mode {
             // Row 2: Replace input
-            let replace_label = "Replace: ";
+            let replace_label = format!("{} ", self.i18n.get("panel.replace"));
             for (i, c) in replace_label.chars().enumerate() {
                 self.renderer.set_cell(x + i as u16 + 1, y + 1, Cell { ch: c, bg: normal_bg, fg: normal_fg, ..Default::default() });
             }
@@ -2225,7 +2230,7 @@ impl App {
             }
 
             let mut btn_x = input_x + input_w + 2;
-            let replace_btn = " Replace ";
+            let replace_btn = format!(" {} ", self.i18n.get("panel.replace_one"));
             let is_rep_focused = self.find_panel.focused_field == PanelField::ReplaceBtn;
             for (i, c) in replace_btn.chars().enumerate() {
                 self.renderer.set_cell(btn_x + i as u16, y + 1, Cell {
@@ -2235,9 +2240,9 @@ impl App {
                     ..Default::default()
                 });
             }
-            btn_x += replace_btn.len() as u16 + 1;
+            btn_x += replace_btn.chars().count() as u16 + 1;
 
-            let replace_all_btn = " Replace All ";
+            let replace_all_btn = format!(" {} ", self.i18n.get("panel.replace_all"));
             let is_rep_all_focused = self.find_panel.focused_field == PanelField::ReplaceAllBtn;
             for (i, c) in replace_all_btn.chars().enumerate() {
                 self.renderer.set_cell(btn_x + i as u16, y + 1, Cell {
@@ -2265,7 +2270,7 @@ impl App {
 
         let mut cur_x = x + 1;
         
-        let match_case = format!("[{}] Match Case", if self.find_panel.flags.match_case { "x" } else { " " });
+        let match_case = format!("[{}] {}", if self.find_panel.flags.match_case { "x" } else { " " }, self.i18n.get("panel.match_case"));
         let is_mc_focused = self.find_panel.focused_field == PanelField::MatchCase;
         for (i, c) in match_case.chars().enumerate() {
             self.renderer.set_cell(cur_x + i as u16, y, Cell {
@@ -2275,9 +2280,9 @@ impl App {
                 ..Default::default()
             });
         }
-        cur_x += match_case.len() as u16 + 2;
+        cur_x += match_case.chars().count() as u16 + 2;
 
-        let whole_word = format!("[{}] Whole Word", if self.find_panel.flags.whole_word { "x" } else { " " });
+        let whole_word = format!("[{}] {}", if self.find_panel.flags.whole_word { "x" } else { " " }, self.i18n.get("panel.whole_word"));
         let is_ww_focused = self.find_panel.focused_field == PanelField::WholeWord;
         for (i, c) in whole_word.chars().enumerate() {
             self.renderer.set_cell(cur_x + i as u16, y, Cell {
@@ -2287,9 +2292,9 @@ impl App {
                 ..Default::default()
             });
         }
-        cur_x += whole_word.len() as u16 + 2;
+        cur_x += whole_word.chars().count() as u16 + 2;
 
-        let use_regex = format!("[{}] Use Regex", if self.find_panel.flags.use_regex { "x" } else { " " });
+        let use_regex = format!("[{}] {}", if self.find_panel.flags.use_regex { "x" } else { " " }, self.i18n.get("panel.use_regex"));
         let is_re_focused = self.find_panel.focused_field == PanelField::Regex;
         for (i, c) in use_regex.chars().enumerate() {
             self.renderer.set_cell(cur_x + i as u16, y, Cell {
@@ -2604,11 +2609,11 @@ impl App {
         }
 
         // Left segment: File status and path
-        let modified = if buffer.is_modified() { "[*] " } else { "" };
+        let modified = if buffer.is_modified() { "[+] " } else { "" };
         let filename = buffer.path.as_ref()
             .and_then(|p| p.file_name())
             .map(|f| f.to_string_lossy())
-            .unwrap_or_else(|| std::borrow::Cow::Borrowed("[No Name]"));
+            .unwrap_or_else(|| std::borrow::Cow::Borrowed(self.i18n.get("status.no_name")));
         let left_text = format!(" {}{}", modified, filename);
 
         // Right segment components
@@ -2650,16 +2655,24 @@ impl App {
             visual_col = w + 1;
         }
 
-        let cursor_info = format!("Ln {}, Col {}", line + 1, visual_col);
+        let cursor_info = self.i18n.get("status.cursor")
+            .replace("{line}", &(line + 1).to_string())
+            .replace("{col}", &visual_col.to_string());
         
         let selection_info = if let Some(ref range) = buffer.selection {
-            format!(" {} sel", range.end - range.start)
+            format!(" {} ", self.i18n.get("status.selection").replace("{n}", &(range.end - range.start).to_string()))
         } else {
             "".to_string()
         };
 
         let search_info = if let Some(ref status) = buffer.search_status {
             format!(" {} ", status)
+        } else if !buffer.find_results.is_empty() {
+            let current = buffer.current_match_idx.map(|i| i + 1).unwrap_or(0);
+            let total = buffer.find_results.len();
+            format!(" {} ", self.i18n.get("status.matches")
+                .replace("{current}", &current.to_string())
+                .replace("{total}", &total.to_string()))
         } else {
             "".to_string()
         };
@@ -2683,7 +2696,7 @@ impl App {
 
         let syntax = buffer.syntax_highlighter.as_ref()
             .map(|h| h.def.meta.name.as_str())
-            .unwrap_or("Plain Text");
+            .unwrap_or_else(|| self.i18n.get("menu.view.syntax_plain"));
 
         let vi_mode = if self.config.vi_mode {
             match buffer.vi_mode {
@@ -2712,114 +2725,13 @@ impl App {
 
         // Render right (right-aligned)
         let right_width = full_right_text.chars().count() as u16;
-        let mut cur_x = x + w.saturating_sub(right_width);
+        let mut cur_rx = x + w.saturating_sub(right_width);
         for c in full_right_text.chars() {
             let width = c.width().unwrap_or(0) as u16;
-            if cur_x >= x && cur_x + width <= x + w {
-                self.renderer.set_cell(cur_x, y, Cell { ch: c, bg, fg, ..Default::default() });
+            if cur_rx >= x && cur_rx + width <= x + w {
+                self.renderer.set_cell(cur_rx, y, Cell { ch: c, bg, fg, ..Default::default() });
             }
-            cur_x += width;
-        }
-    }
-        // Right segment
-        let (line, col) = buffer.char_to_line_col(buffer.cursor);
-        let mut visual_col = col + 1;
-        if self.config.word_wrap {
-             let (_ex, _ey, ew, _eh) = self.layout.editor_bounds();
-             let wraps = buffer.wrap_line(line, ew as usize, self.config.tab_size as usize);
-             let char_in_line = col;
-             for wrap in wraps {
-                 if char_in_line >= wrap.start && char_in_line <= wrap.end {
-                     // Calculate width from wrap.start to char_in_line
-                     let mut w = 0;
-                     let line_slice = buffer.rope.line(line);
-                     for (i, c) in line_slice.chars().enumerate().skip(wrap.start) {
-                         if i >= char_in_line { break; }
-                         if c == '\t' {
-                             let ts = self.config.tab_size as usize;
-                             w += ts - (w % ts);
-                         } else {
-                             w += c.width().unwrap_or(0);
-                         }
-                     }
-                     visual_col = w + 1;
-                     break;
-                 }
-             }
-        } else {
-             // Calculate visual column for non-wrapped line
-             let mut w = 0;
-             let line_slice = buffer.rope.line(line);
-             for (i, c) in line_slice.chars().enumerate() {
-                 if i >= col { break; }
-                 if c == '\t' {
-                     let ts = self.config.tab_size as usize;
-                     w += ts - (w % ts);
-                 } else {
-                     w += c.width().unwrap_or(0);
-                 }
-             }
-             visual_col = w + 1;
-        }
-        let cursor_info = format!(" Ln {}, Col {} ", line + 1, visual_col);
-        
-        let selection_info = if let Some(ref range) = buffer.selection {
-            format!(" {} chars ", range.end - range.start)
-        } else {
-            "".to_string()
-        };
-
-        let encoding = format!(" {:?} ", buffer.encoding);
-        let line_ending = format!(" {:?} ", buffer.line_ending);
-        let syntax = format!(" {} ", buffer.syntax_highlighter.as_ref().map(|h| h.def.meta.name.as_str()).unwrap_or("Plain Text"));
-        let vi_mode = if self.config.vi_mode {
-            match buffer.vi_mode {
-                led_core::ViMode::Normal => " NORMAL ",
-                led_core::ViMode::Insert => " INSERT ",
-                led_core::ViMode::Visual => " VISUAL ",
-            }
-        } else {
-            ""
-        };
-        
-        let search_info = if let Some(ref status) = buffer.search_status {
-            format!(" {} ", status)
-        } else {
-            "".to_string()
-        };
-
-        let left_text = format!(" {} {}", if buffer.is_modified() { "[*]" } else { "" }, buffer.path.as_ref().and_then(|p| p.file_name()).map(|f| f.to_string_lossy()).unwrap_or_else(|| std::borrow::Cow::Borrowed("Untitled")));
-        let right_text = format!("{}{}{}{}{}{}{}", search_info, selection_info, cursor_info, encoding, line_ending, syntax, vi_mode);
-        
-        // Fill background
-        for dx in 0..w {
-            self.renderer.set_cell(x + dx, y, Cell {
-                ch: ' ',
-                bg,
-                fg,
-                ..Default::default()
-            });
-        }
-
-        // Render left
-        let mut cur_x = x;
-        for c in left_text.chars() {
-            let width = c.width().unwrap_or(0) as u16;
-            if cur_x + width <= x + w {
-                self.renderer.set_cell(cur_x, y, Cell { ch: c, bg, fg, ..Default::default() });
-                cur_x += width;
-            }
-        }
-
-        // Render right (right-aligned)
-        let right_width = right_text.chars().count() as u16;
-        let mut cur_x = x + w.saturating_sub(right_width);
-        for c in right_text.chars() {
-            let width = c.width().unwrap_or(0) as u16;
-            if cur_x + width <= x + w {
-                self.renderer.set_cell(cur_x, y, Cell { ch: c, bg, fg, ..Default::default() });
-                cur_x += width;
-            }
+            cur_rx += width;
         }
     }
 
@@ -2829,8 +2741,11 @@ impl App {
             terminal::Clear(terminal::ClearType::All),
             cursor::MoveTo(0, 0)
         )?;
-        let msg = format!("Terminal too small ({}x{}). Please resize.", self.width, self.height);
-        let x = (self.width.saturating_sub(msg.len() as u16)) / 2;
+        let msg = self.i18n.get("status.terminal_too_small")
+            .replace("{cols}", &self.width.to_string())
+            .replace("{rows}", &self.height.to_string());
+        let msg_w = msg.width() as u16;
+        let x = (self.width.saturating_sub(msg_w)) / 2;
         let y = self.height / 2;
         execute!(stdout, cursor::MoveTo(x, y))?;
         write!(stdout, "{}", msg)?;

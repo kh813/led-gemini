@@ -61,6 +61,14 @@ pub struct FileBrowser {
     pub sort_order: SortOrder,
     pub input_text: String,
     pub input_focused: bool,
+
+    // i18n labels
+    pub i18n_hidden: String,
+    pub i18n_encoding: String,
+    pub i18n_name: String,
+    pub i18n_size: String,
+    pub i18n_modified: String,
+    pub i18n_filename: String,
 }
 
 impl FileBrowser {
@@ -75,9 +83,29 @@ impl FileBrowser {
             sort_order: SortOrder::Ascending,
             input_text: String::new(),
             input_focused: false,
+
+            i18n_hidden: "Show Hidden (Alt+H)".to_string(),
+            i18n_encoding: "Detect Encoding (Alt+E)".to_string(),
+            i18n_name: "Name".to_string(),
+            i18n_size: "Size".to_string(),
+            i18n_modified: "Modified".to_string(),
+            i18n_filename: "File name: ".to_string(),
         };
         browser.refresh();
         browser
+    }
+
+    pub fn localize(&mut self, i18n: &led_core::I18n) {
+        self.i18n_hidden = format!("{} (Alt+H)", i18n.get("dialog.show_hidden"));
+        self.i18n_encoding = format!("{} (Alt+E)", i18n.get("dialog.detect_encoding"));
+        self.i18n_name = i18n.get("dialog.file_browser.name").to_string();
+        if self.i18n_name == "dialog.file_browser.name" { self.i18n_name = "Name".to_string(); }
+        self.i18n_size = i18n.get("dialog.file_browser.size").to_string();
+        if self.i18n_size == "dialog.file_browser.size" { self.i18n_size = "Size".to_string(); }
+        self.i18n_modified = i18n.get("dialog.file_browser.modified").to_string();
+        if self.i18n_modified == "dialog.file_browser.modified" { self.i18n_modified = "Modified".to_string(); }
+        self.i18n_filename = format!("{}: ", i18n.get("dialog.file_browser.filename"));
+        if self.i18n_filename == "dialog.file_browser.filename: " { self.i18n_filename = "File name: ".to_string(); }
     }
 
     pub fn refresh(&mut self) {
@@ -376,13 +404,13 @@ impl FileBrowser {
         }
 
         // Options bar
-        let hidden_text = format!("[{}] Show Hidden (Alt+H)", if self.show_hidden { "x" } else { " " });
+        let hidden_text = format!("[{}] {}", if self.show_hidden { "x" } else { " " }, self.i18n_hidden);
         for (i, c) in hidden_text.chars().enumerate() {
             renderer.set_cell(x + 2 + i as u16, y + 2, Cell { ch: c, ..Default::default() });
         }
-        let enc_text = format!("[{}] Detect Encoding (Alt+E)", if self.detect_encoding { "x" } else { " " });
+        let enc_text = format!("[{}] {}", if self.detect_encoding { "x" } else { " " }, self.i18n_encoding);
         for (i, c) in enc_text.chars().enumerate() {
-            renderer.set_cell(x + 25 + i as u16, y + 2, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + 30 + i as u16, y + 2, Cell { ch: c, ..Default::default() });
         }
 
         // Quick-nav bar
@@ -403,9 +431,9 @@ impl FileBrowser {
         let size_indicator = if self.sort_by == SortBy::Size { if self.sort_order == SortOrder::Ascending { " ▲" } else { " ▼" } } else { "" };
         let mod_indicator = if self.sort_by == SortBy::Modified { if self.sort_order == SortOrder::Ascending { " ▲" } else { " ▼" } } else { "" };
 
-        let name_head = format!("Name{}", name_indicator);
-        let size_head = format!("Size{}", size_indicator);
-        let mod_head = format!("Modified{}", mod_indicator);
+        let name_head = format!("{}{}", self.i18n_name, name_indicator);
+        let size_head = format!("{}{}", self.i18n_size, size_indicator);
+        let mod_head = format!("{}{}", self.i18n_modified, mod_indicator);
 
         for (i, c) in name_head.chars().enumerate() {
             renderer.set_cell(x + 2 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
@@ -493,13 +521,12 @@ impl FileBrowser {
         let bg = if self.input_focused { Color::White } else { Color::Reset };
         let fg = if self.input_focused { Color::Black } else { Color::White };
         
-        let label = "File name: ";
-        for (i, c) in label.chars().enumerate() {
+        for (i, c) in self.i18n_filename.chars().enumerate() {
             renderer.set_cell(x + 2 + i as u16, iy, Cell { ch: c, ..Default::default() });
         }
         
-        let input_x = x + 2 + label.len() as u16;
-        let input_w = w - label.len() as u16 - 4;
+        let input_x = x + 2 + self.i18n_filename.chars().count() as u16;
+        let input_w = w.saturating_sub(self.i18n_filename.chars().count() as u16 + 4);
         for dx in 0..input_w {
             renderer.set_cell(input_x + dx, iy, Cell { ch: ' ', bg, ..Default::default() });
         }
@@ -554,13 +581,17 @@ pub fn render_base_dialog(renderer: &mut Renderer, title: &str, x: u16, y: u16, 
 pub struct OpenDialog {
     pub browser: FileBrowser,
     pub error_message: Option<String>,
+    pub i18n_title: String,
 }
 
 impl OpenDialog {
-    pub fn new() -> Self {
+    pub fn new(i18n: &led_core::I18n) -> Self {
+        let mut browser = FileBrowser::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")));
+        browser.localize(i18n);
         Self {
-            browser: FileBrowser::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))),
+            browser,
             error_message: None,
+            i18n_title: i18n.get("dialog.open_file").to_string(),
         }
     }
 }
@@ -614,10 +645,11 @@ impl Dialog for OpenDialog {
 pub struct SaveAsDialog {
     pub browser: FileBrowser,
     pub error_message: Option<String>,
+    pub i18n_title: String,
 }
 
 impl SaveAsDialog {
-    pub fn new(current_path: Option<&PathBuf>) -> Self {
+    pub fn new(current_path: Option<&PathBuf>, i18n: &led_core::I18n) -> Self {
         let mut browser = FileBrowser::new(
             current_path.and_then(|p| p.parent()).map(|p| p.to_path_buf())
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"))));
@@ -629,10 +661,12 @@ impl SaveAsDialog {
         }
         
         browser.input_focused = true;
+        browser.localize(i18n);
         
         Self { 
             browser,
             error_message: None,
+            i18n_title: i18n.get("dialog.save_as").to_string(),
         }
     }
 }
@@ -713,10 +747,17 @@ impl Dialog for MessageDialog {
     fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
         render_base_dialog(renderer, self.title(), x, y, w, h);
 
-        let lx = x + (w.saturating_sub(self.message.len() as u16)) / 2;
+        use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+        let msg_w = self.message.width() as u16;
+        let lx = x + (w.saturating_sub(msg_w)) / 2;
         let ly = y + 2;
-        for (i, c) in self.message.chars().enumerate() {
-            renderer.set_cell(lx + i as u16, ly, Cell { ch: c, ..Default::default() });
+        let mut cur_lx = lx;
+        for c in self.message.chars() {
+            let cw = c.width().unwrap_or(0) as u16;
+            if cur_lx + cw <= x + w - 1 {
+                renderer.set_cell(cur_lx, ly, Cell { ch: c, ..Default::default() });
+            }
+            cur_lx += cw;
         }
 
         // Buttons
@@ -782,13 +823,17 @@ impl Dialog for MessageDialog {
 pub struct AboutDialog {
     pub i18n_about: String,
     pub i18n_ok: String,
+    pub i18n_version: String,
+    pub i18n_license: String,
 }
 
 impl AboutDialog {
     pub fn new(i18n: &led_core::I18n) -> Self {
         Self {
-            i18n_about: i18n.get("menu.help.about").to_string(),
-            i18n_ok: "OK".to_string(),
+            i18n_about: i18n.get("dialog.about").to_string(),
+            i18n_ok: i18n.get("dialog.ok").to_string(),
+            i18n_version: i18n.get("about.version").to_string(),
+            i18n_license: i18n.get("about.license").to_string(),
         }
     }
 }
@@ -806,22 +851,29 @@ impl Dialog for AboutDialog {
         render_base_dialog(renderer, self.title(), x, y, w, h);
 
         let content = [
-            "led editor v0.1.0",
-            "A lightweight, modern TUI editor.",
-            "",
-            "License: MIT",
+            format!("led editor v0.1.0"),
+            "A lightweight, modern TUI editor.".to_string(),
+            "".to_string(),
+            format!("{}: MIT", self.i18n_license),
         ];
 
         for (i, line) in content.iter().enumerate() {
-            let lx = x + (w.saturating_sub(line.len() as u16)) / 2;
+            use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+            let line_w = line.width() as u16;
+            let lx = x + (w.saturating_sub(line_w)) / 2;
             let ly = y + 2 + i as u16;
-            for (j, c) in line.chars().enumerate() {
-                renderer.set_cell(lx + j as u16, ly, Cell { ch: c, ..Default::default() });
+            let mut cur_lx = lx;
+            for c in line.chars() {
+                let cw = c.width().unwrap_or(0) as u16;
+                if cur_lx + cw <= x + w - 1 {
+                    renderer.set_cell(cur_lx, ly, Cell { ch: c, ..Default::default() });
+                }
+                cur_lx += cw;
             }
         }
 
         let btn_text = format!("[ {} ]", self.i18n_ok);
-        let bx = x + (w.saturating_sub(btn_text.len() as u16)) / 2;
+        let bx = x + (w.saturating_sub(btn_text.chars().count() as u16)) / 2;
         let by = y + h - 2;
         for (i, c) in btn_text.chars().enumerate() {
             renderer.set_cell(bx + i as u16, by, Cell {
@@ -866,9 +918,9 @@ pub struct ReopenConfirmationDialog {
 impl ReopenConfirmationDialog {
     pub fn new(i18n: &led_core::I18n) -> Self {
         Self {
-            i18n_title: "Reopen File".to_string(),
-            i18n_message: "Discard unsaved changes and reopen?".to_string(),
-            i18n_discard: i18n.get("dialog.discard").to_string(),
+            i18n_title: i18n.get("dialog.reopen_file").to_string(),
+            i18n_message: i18n.get("dialog.discard_reopen_prompt").to_string(),
+            i18n_discard: i18n.get("dialog.discard_reopen").to_string(),
             i18n_cancel: i18n.get("dialog.cancel").to_string(),
             selected_btn: 0,
         }
@@ -887,10 +939,17 @@ impl Dialog for ReopenConfirmationDialog {
     fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
         render_base_dialog(renderer, self.title(), x, y, w, h);
 
-        let lx = x + (w.saturating_sub(self.i18n_message.len() as u16)) / 2;
+        use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
+        let msg_w = self.i18n_message.width() as u16;
+        let lx = x + (w.saturating_sub(msg_w)) / 2;
         let ly = y + 2;
-        for (i, c) in self.i18n_message.chars().enumerate() {
-            renderer.set_cell(lx + i as u16, ly, Cell { ch: c, ..Default::default() });
+        let mut cur_lx = lx;
+        for c in self.i18n_message.chars() {
+            let cw = c.width().unwrap_or(0) as u16;
+            if cur_lx + cw <= x + w - 1 {
+                renderer.set_cell(cur_lx, ly, Cell { ch: c, ..Default::default() });
+            }
+            cur_lx += cw;
         }
 
         let buttons = [&self.i18n_discard, &self.i18n_cancel];
