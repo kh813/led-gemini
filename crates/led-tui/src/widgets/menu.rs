@@ -11,6 +11,7 @@ pub enum MenuItem {
         label: String,
         action: Action,
         checked: bool,
+        is_radio: bool,
     },
     Submenu {
         label: String,

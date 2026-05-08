@@ -80,6 +80,14 @@ impl Config {
         Self::config_dir().map(|dir| dir.join("config.toml"))
     }
 
+    pub fn themes_dir() -> Option<PathBuf> {
+        Self::config_dir().map(|dir| dir.join("themes"))
+    }
+
+    pub fn syntax_dir() -> Option<PathBuf> {
+        Self::config_dir().map(|dir| dir.join("syntax"))
+    }
+
     pub fn write_key(key: &str, value: &str) -> Result<()> {
         let path = Self::config_file_path().context("Could not determine config path")?;
         let dir = path.parent().context("Could not determine config directory")?;

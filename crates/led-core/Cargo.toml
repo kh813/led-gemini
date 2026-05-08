@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow        = { workspace = true }
 serde         = { workspace = true }
+toml          = "0.8"
 toml-span     = { workspace = true }
 regex         = { workspace = true }
 aho-corasick  = { workspace = true }

@@ -27,7 +27,7 @@ impl Layout {
         }
     }
 
-    pub fn recompute(&mut self, menus: &[crate::widgets::menu::Menu], buffers: &[led_core::buffer::Buffer], active_buffer_idx: usize, show_line_numbers: bool) {
+    pub fn recompute(&mut self, menus: &[crate::widgets::menu::Menu], buffers: &[led_core::buffer::Editor], active_buffer_idx: usize, show_line_numbers: bool) {
         // Recompute menu items
         self.menu_bar_items.clear();
         let mut current_x = 1;
@@ -47,7 +47,7 @@ impl Layout {
                 .and_then(|p| p.file_name())
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| "[No Name]".to_string());
-            let modified = if buffer.modified { "[+] " } else { "" };
+            let modified = if buffer.is_modified() { "[+] " } else { "" };
             let ro = if buffer.read_only { "[RO] " } else { "" };
             let label = format!(" {}{}{} × ", ro, modified, name);
             let width = label.chars().count() as u16;
@@ -91,6 +91,10 @@ impl Layout {
 
     pub fn tab_bounds(&self) -> (u16, u16, u16, u16) {
         (0, self.menu_height, self.width, self.tab_height)
+    }
+
+    pub fn panel_bounds(&self) -> (u16, u16, u16, u16) {
+        (0, self.menu_height + self.tab_height, self.width, self.panel_height)
     }
 
     pub fn status_bounds(&self) -> (u16, u16, u16, u16) {

@@ -1,6 +1,9 @@
 pub mod config;
 pub mod i18n;
 pub mod buffer;
+pub mod search;
+pub mod syntax;
+pub mod theme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -56,6 +59,13 @@ pub enum LineEnding {
     Lf,
     Crlf,
     Cr,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViMode {
+    Normal,
+    Insert,
+    Visual,
 }
 
 pub use config::Config;
