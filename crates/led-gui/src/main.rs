@@ -3,6 +3,7 @@ use gpui::*;
 mod app;
 mod window_view;
 mod widgets;
+mod workspace;
 
 use crate::app::setup_app;
 

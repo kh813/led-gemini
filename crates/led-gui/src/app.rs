@@ -2,6 +2,7 @@ use gpui::*;
 use led_core::config::Config;
 use led_core::i18n::I18n;
 use crate::window_view::WindowView;
+use crate::workspace::Workspace;
 
 pub fn setup_app(app: &mut App) {
     let config = Config::load();
@@ -10,8 +11,10 @@ pub fn setup_app(app: &mut App) {
     // Platform-conditional menu setup
     setup_menu(app, &i18n);
 
-    app.open_window(WindowOptions::default(), |window, cx| {
-        cx.new(|cx| WindowView::new(config, i18n, window, cx))
+    app.open_window(WindowOptions::default(), move |window, cx| {
+        // Try cx.new for Model if new_model is not found
+        let workspace = cx.new(|_| Workspace::new());
+        cx.new(|cx| WindowView::new(config, i18n, workspace, window, cx))
     }).expect("Failed to open window");
 }
 
@@ -50,7 +53,23 @@ fn build_native_menus(i18n: &I18n) -> Vec<Menu> {
             ],
             disabled: false,
         },
+        Menu {
+            name: i18n.get("menu.edit").into(),
+            items: vec![
+                MenuItem::action(i18n.get("menu.edit.undo"), Undo {}),
+                MenuItem::action(i18n.get("menu.edit.redo"), Redo {}),
+            ],
+            disabled: false,
+        },
+        Menu {
+            name: "Tabs".into(),
+            items: vec![
+                MenuItem::action("Next Tab", NextTab {}),
+                MenuItem::action("Previous Tab", PrevTab {}),
+            ],
+            disabled: false,
+        }
     ]
 }
 
-actions!(led, [About, Quit, New, Open, Save, SaveAs, CloseTab]);
+actions!(led, [About, Quit, New, Open, Save, SaveAs, CloseTab, NextTab, PrevTab, Undo, Redo]);

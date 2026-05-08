@@ -1,0 +1,54 @@
+use led_core::buffer::Editor;
+use led_core::theme::Theme;
+
+pub struct Workspace {
+    pub editors: Vec<Editor>,
+    pub active_editor_index: usize,
+    pub theme: Theme,
+}
+
+impl Workspace {
+    pub fn new() -> Self {
+        Self {
+            editors: vec![Editor::new()],
+            active_editor_index: 0,
+            theme: Theme::default(),
+        }
+    }
+
+    pub fn active_editor(&self) -> &Editor {
+        &self.editors[self.active_editor_index]
+    }
+
+    pub fn active_editor_mut(&mut self) -> &mut Editor {
+        &mut self.editors[self.active_editor_index]
+    }
+
+    pub fn add_editor(&mut self, editor: Editor) {
+        self.editors.push(editor);
+        self.active_editor_index = self.editors.len() - 1;
+    }
+
+    pub fn close_active_editor(&mut self) {
+        if self.editors.len() > 1 {
+            self.editors.remove(self.active_editor_index);
+            if self.active_editor_index >= self.editors.len() {
+                self.active_editor_index = self.editors.len() - 1;
+            }
+        } else {
+            self.editors[0] = Editor::new();
+        }
+    }
+
+    pub fn next_tab(&mut self) {
+        if !self.editors.is_empty() {
+            self.active_editor_index = (self.active_editor_index + 1) % self.editors.len();
+        }
+    }
+
+    pub fn prev_tab(&mut self) {
+        if !self.editors.is_empty() {
+            self.active_editor_index = (self.active_editor_index + self.editors.len() - 1) % self.editors.len();
+        }
+    }
+}
