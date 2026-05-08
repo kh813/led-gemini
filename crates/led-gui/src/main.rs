@@ -1,3 +1,13 @@
+use gpui::*;
+
+mod app;
+mod window_view;
+mod widgets;
+
+use crate::app::setup_app;
+
 fn main() {
-    println!("Hello, led GUI!");
+    gpui_platform::application().run(|app: &mut App| {
+        setup_app(app);
+    });
 }

@@ -9,5 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 led-core = { path = "../led-core" }
-# gpui will be added in Phase 13
+gpui          = { git = "https://github.com/zed-industries/zed", rev = "6766514599c6f8ce6530ccc685db5e0d68c44f32" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", rev = "6766514599c6f8ce6530ccc685db5e0d68c44f32" }
 anyhow   = { workspace = true }
+serde    = { workspace = true }

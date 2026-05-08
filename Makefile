@@ -1,6 +1,7 @@
 .PHONY: all default gui clean help
 
 SHELL := /bin/bash
+export PATH := $(CURDIR)/dummy_bin:$(PATH)
 OS := $(shell uname -s)
 ARCH := $(shell uname -m)
 
@@ -40,9 +41,30 @@ all:
 gui:
 	@if [ "$(OS)" != "Darwin" ]; then echo "Error: 'make gui' requires macOS host"; exit 1; fi
 	@mkdir -p $(DIST_DIR)
-	cargo build --release -p led-gui
-	# .app bundle creation would go here
-	@echo "Built $(DIST_DIR)/led.app (stub)"
+	cargo build --release -p led-gui $(CARGO_FLAGS)
+	@rm -rf $(DIST_DIR)/led.app
+	@mkdir -p $(DIST_DIR)/led.app/Contents/MacOS
+	@mkdir -p $(DIST_DIR)/led.app/Contents/Resources
+	@cp target/release/$(LED_GUI_BIN) $(DIST_DIR)/led.app/Contents/MacOS/$(LED_GUI_BIN)
+	@echo '<?xml version="1.0" encoding="UTF-8"?>' > $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '<plist version="1.0">' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '<dict>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundleExecutable</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>$(LED_GUI_BIN)</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundleIdentifier</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>dev.hiroshi.led-gui</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundleName</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>led</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundlePackageType</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>APPL</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundleShortVersionString</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>0.1.0</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>LSMinimumSystemVersion</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>10.15.7</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '</dict>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '</plist>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo "Built $(DIST_DIR)/led.app"
 
 clean:
 	rm -rf $(DIST_DIR)

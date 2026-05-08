@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::fs;
 use crate::config::Config;
 
+#[derive(Clone)]
 pub struct I18n {
     strings: HashMap<String, String>,
 }

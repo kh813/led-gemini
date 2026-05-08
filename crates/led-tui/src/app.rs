@@ -1911,6 +1911,14 @@ impl App {
 
         self.render_status();
 
+        // Render open dropdowns
+        self.dropdown_rects.clear();
+        if let Some(idx) = self.active_menu {
+            let start_x = self.layout.menu_bar_items[idx].1;
+            let menu = self.menus[idx].clone();
+            self.render_dropdown(start_x, 1, &menu, 0);
+        }
+
         // Render dialog if active
         if let Some(ref dialog) = self.current_dialog {
             let (dw, dh) = dialog.dimensions();
@@ -1956,14 +1964,6 @@ impl App {
             // Fill padding
             self.renderer.set_cell(*start, y, Cell { ch: ' ', bg: item_bg, ..Default::default() });
             self.renderer.set_cell(*end - 1, y, Cell { ch: ' ', bg: item_bg, ..Default::default() });
-        }
-
-        // Render open dropdowns
-        self.dropdown_rects.clear();
-        if let Some(idx) = self.active_menu {
-            let start_x = self.layout.menu_bar_items[idx].1;
-            let menu = self.menus[idx].clone();
-            self.render_dropdown(start_x, 1, &menu, 0);
         }
     }
 

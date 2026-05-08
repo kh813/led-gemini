@@ -334,8 +334,8 @@ impl FileBrowser {
         // Header click sorting
         if my == y + 4 {
             let name_x = x + 2;
-            let size_x = x + w - 20;
-            let mod_x = x + w - 10;
+            let size_x = x + w - 25;
+            let mod_x = x + w - 14;
             
             if mx >= name_x && mx < size_x {
                 if self.sort_by == SortBy::Name {
@@ -439,10 +439,10 @@ impl FileBrowser {
             renderer.set_cell(x + 2 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
         }
         for (i, c) in size_head.chars().enumerate() {
-            renderer.set_cell(x + w - 20 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + w - 25 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
         }
         for (i, c) in mod_head.chars().enumerate() {
-            renderer.set_cell(x + w - 10 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + w - 14 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
         }
 
         // Entries
@@ -472,7 +472,7 @@ impl FileBrowser {
                 };
 
                 for (j, c) in name.chars().enumerate() {
-                    if (j as u16) < w - 22 {
+                    if (j as u16) < w - 27 {
                         renderer.set_cell(x + 2 + j as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
                     }
                 }
@@ -486,8 +486,8 @@ impl FileBrowser {
                         format!("{:.1} MB", entry.size as f64 / (1024.0 * 1024.0))
                     };
                     for (j, c) in size_str.chars().enumerate() {
-                        if (j as u16) < 8 {
-                            renderer.set_cell(x + w - 20 + j as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
+                        if (j as u16) < 10 {
+                            renderer.set_cell(x + w - 25 + j as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
                         }
                     }
 
@@ -507,8 +507,8 @@ impl FileBrowser {
                             datetime.format("%Y-%m-%d").to_string()
                         };
                         for (j, c) in mod_str.chars().enumerate() {
-                            if (j as u16) < 10 {
-                                renderer.set_cell(x + w - 10 + j as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
+                            if (j as u16) < 12 {
+                                renderer.set_cell(x + w - 14 + j as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
                             }
                         }
                     }
@@ -602,7 +602,7 @@ impl Dialog for OpenDialog {
     }
 
     fn dimensions(&self) -> (u16, u16) {
-        (60, 22)
+        (80, 22)
     }
 
     fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
@@ -677,7 +677,7 @@ impl Dialog for SaveAsDialog {
     }
 
     fn dimensions(&self) -> (u16, u16) {
-        (60, 22)
+        (80, 22)
     }
 
     fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {

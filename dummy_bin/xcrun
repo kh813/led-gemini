@@ -1,0 +1,60 @@
+#!/bin/bash
+# xcrun shim to redirect metal/metallib calls to the user-provided toolchain path
+
+TOOLCHAIN_BIN="/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.5.188.0.JxlXr0/Metal.xctoolchain/usr/bin"
+
+# Extract the tool name (the first non-option argument)
+TOOL=""
+for arg in "$@"; do
+    if [[ ! "$arg" =~ ^- ]]; then
+        TOOL="$arg"
+        break
+    fi
+done
+
+if [[ "$TOOL" == "metal" ]]; then
+    ARGS=()
+    SKIP_NEXT=false
+    for arg in "$@"; do
+        if [ "$SKIP_NEXT" = true ]; then
+            SKIP_NEXT=false
+            continue
+        fi
+        if [[ "$arg" == "-sdk" ]]; then
+            SKIP_NEXT=true
+            continue
+        fi
+        if [[ "$arg" == "macosx" ]]; then
+            continue
+        fi
+        if [[ "$arg" == "metal" ]]; then
+            continue
+        fi
+        ARGS+=("$arg")
+    done
+    exec "$TOOLCHAIN_BIN/metal" "${ARGS[@]}"
+elif [[ "$TOOL" == "metallib" ]]; then
+    ARGS=()
+    SKIP_NEXT=false
+    for arg in "$@"; do
+        if [ "$SKIP_NEXT" = true ]; then
+            SKIP_NEXT=false
+            continue
+        fi
+        if [[ "$arg" == "-sdk" ]]; then
+            SKIP_NEXT=true
+            continue
+        fi
+        if [[ "$arg" == "macosx" ]]; then
+            continue
+        fi
+        if [[ "$arg" == "metallib" ]]; then
+            continue
+        fi
+        ARGS+=("$arg")
+    done
+    exec "$TOOLCHAIN_BIN/metallib" "${ARGS[@]}"
+else
+    # Fallback to the real xcrun
+    exec /usr/bin/xcrun "$@"
+fi

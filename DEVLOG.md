@@ -1,4 +1,29 @@
 # led Devlog
+
+## 2026-05-08
+
+### Completed Phase 13: led-gui — gpui Setup & Window Skeleton
+- Pinned `gpui` to commit `6766514`.
+- Implemented `led-gui` entry point and main application loop.
+- Set up platform-conditional menu system: native NSMenu for macOS, placeholder in-window menu bar for others.
+- Created `WindowView` root component that composes child views based on platform.
+- Implemented stubs for `EditorView`, `TabBar`, `StatusBar`, `FindPanel`, and `MenuBar`.
+- Resolved macOS build issues by implementing an `xcrun` shim that redirects Metal tool calls to the correct toolchain path.
+- Updated `Makefile` to integrate shims and ensure stable builds for both TUI and GUI targets.
+
+### Completed Phase 12: i18n & Final Polish
+- Implemented full i18n framework in `led-core`.
+- Added built-in Japanese (`ja`) locale and support for external TOML locales.
+- Localized all UI elements in `led-tui`, including menus, dialogs, and status messages.
+- Added `README.md` with installation and SSH usage instructions.
+- Verified build and localization across all targets.
+
+### Completed Phase 11: Syntax Highlighting & Themes
+- Implemented regex-based syntax highlighting engine in `led-core` with `rayon` parallelization.
+- Added 11 built-in syntax definitions (Rust, Python, Go, etc.) and 6 built-in themes (Tokyo Night, Solarized, etc.).
+- Wired theme and syntax selection in `led-tui`, with live application and persistence.
+- Verified highlighting performance and correctness for all supported languages.
+
 ## 2026-05-06
 ### Completed Phase 10: Vi Mode
 - Implemented `Normal`, `Insert`, and `Visual` modes.

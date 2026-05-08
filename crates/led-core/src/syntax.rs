@@ -22,7 +22,7 @@ pub enum TokenType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntaxDefinition {
     pub meta: SyntaxMeta,
-    #[serde(rename = "rule")]
+    #[serde(rename = "rule", default)]
     pub rules: Vec<SyntaxRuleDef>,
 }
 
