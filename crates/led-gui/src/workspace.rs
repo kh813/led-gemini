@@ -1,18 +1,21 @@
 use led_core::buffer::Editor;
 use led_core::theme::Theme;
+use led_core::config::Config;
 
 pub struct Workspace {
     pub editors: Vec<Editor>,
     pub active_editor_index: usize,
     pub theme: Theme,
+    pub config: Config,
 }
 
 impl Workspace {
-    pub fn new() -> Self {
+    pub fn new(config: Config) -> Self {
         Self {
             editors: vec![Editor::new()],
             active_editor_index: 0,
             theme: Theme::default(),
+            config,
         }
     }
 

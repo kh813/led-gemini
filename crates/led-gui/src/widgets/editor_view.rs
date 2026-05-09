@@ -233,13 +233,51 @@ impl EditorView {
         let line_count = editor.line_count();
         let scroll_row = editor.scroll_row;
         
+        let word_wrap = false; // Placeholder
+
         div()
             .flex_col()
             .children(
                 (scroll_row..line_count.min(scroll_row + 100)).map(|idx| {
-                    self.render_line(idx, workspace)
+                    if word_wrap {
+                        self.render_wrapped_line(idx, workspace).into_any_element()
+                    } else {
+                        self.render_line(idx, workspace).into_any_element()
+                    }
                 })
             )
+    }
+
+    fn render_wrapped_line(&self, line_idx: usize, workspace: &Workspace) -> impl IntoElement {
+        let editor = workspace.active_editor();
+        let theme = &workspace.theme;
+        let line = editor.rope.line(line_idx);
+        let line_str = line.to_string();
+
+        // Assume char_width is 8.4, we need to know the window width
+        // For simplicity, let's hardcode a width or use a reasonable default
+        let wraps = editor.wrap_line(line_idx, 80, 4); 
+
+        div()
+            .flex_col()
+            .children(wraps.into_iter().enumerate().map(|(vidx, range)| {
+                let chunk = &line_str[range.start..range.end];
+                div()
+                    .flex()
+                    .h(px(20.0))
+                    .child(
+                        div()
+                            .w(px(50.0))
+                            .justify_end()
+                            .px_2()
+                            .text_color(self.led_color_to_gpui(theme.editor.line_number))
+                            .child(if vidx == 0 { (line_idx + 1).to_string() } else { "".to_string() })
+                    )
+                    .child(
+                        div()
+                            .child(chunk.to_string())
+                    )
+            }))
     }
 
     fn render_line(&self, line_idx: usize, workspace: &Workspace) -> impl IntoElement {

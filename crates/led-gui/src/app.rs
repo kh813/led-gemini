@@ -50,6 +50,8 @@ fn build_native_menus(i18n: &I18n) -> Vec<Menu> {
                 MenuItem::action(i18n.get("menu.file.save_as"), SaveAs {}),
                 MenuItem::separator(),
                 MenuItem::action(i18n.get("menu.file.close"), CloseTab {}),
+                MenuItem::separator(),
+                MenuItem::action(i18n.get("menu.file.exit"), Exit {}),
             ],
             disabled: false,
         },
@@ -58,6 +60,51 @@ fn build_native_menus(i18n: &I18n) -> Vec<Menu> {
             items: vec![
                 MenuItem::action(i18n.get("menu.edit.undo"), Undo {}),
                 MenuItem::action(i18n.get("menu.edit.redo"), Redo {}),
+                MenuItem::separator(),
+                MenuItem::action(i18n.get("menu.edit.cut"), Cut {}),
+                MenuItem::action(i18n.get("menu.edit.copy"), Copy {}),
+                MenuItem::action(i18n.get("menu.edit.paste"), Paste {}),
+                MenuItem::separator(),
+                MenuItem::action(i18n.get("menu.edit.find"), Find {}),
+                MenuItem::action(i18n.get("menu.edit.replace"), Replace {}),
+                MenuItem::separator(),
+                MenuItem::action(i18n.get("menu.edit.select_all"), SelectAll {}),
+            ],
+            disabled: false,
+        },
+        Menu {
+            name: i18n.get("menu.view").into(),
+            items: vec![
+                MenuItem::action(i18n.get("menu.view.go_to_line"), GoToLine {}),
+                MenuItem::separator(),
+                MenuItem::action(i18n.get("menu.view.line_numbers"), ToggleLineNumbers {}),
+                MenuItem::action(i18n.get("menu.view.word_wrap"), ToggleWordWrap {}),
+                MenuItem::action(i18n.get("menu.view.vi_mode"), ToggleViMode {}),
+                MenuItem::separator(),
+                MenuItem::submenu(Menu {
+                    name: i18n.get("menu.view.encoding").into(),
+                    items: vec![
+                        MenuItem::action("UTF-8", NoOp {}),
+                        MenuItem::action("Shift-JIS", NoOp {}),
+                    ],
+                    disabled: false,
+                }),
+                MenuItem::submenu(Menu {
+                    name: i18n.get("menu.view.line_ending").into(),
+                    items: vec![
+                        MenuItem::action("LF", NoOp {}),
+                        MenuItem::action("CRLF", NoOp {}),
+                    ],
+                    disabled: false,
+                }),
+                MenuItem::submenu(Menu {
+                    name: i18n.get("menu.view.theme").into(),
+                    items: vec![
+                        MenuItem::action("Tokyo Night", NoOp {}),
+                        MenuItem::action("Solarized Dark", NoOp {}),
+                    ],
+                    disabled: false,
+                }),
             ],
             disabled: false,
         },
@@ -68,8 +115,29 @@ fn build_native_menus(i18n: &I18n) -> Vec<Menu> {
                 MenuItem::action("Previous Tab", PrevTab {}),
             ],
             disabled: false,
+        },
+        Menu {
+            name: i18n.get("menu.help").into(),
+            items: vec![
+                MenuItem::action(i18n.get("menu.help.about"), About {}),
+            ],
+            disabled: false,
         }
     ]
 }
 
-actions!(led, [About, Quit, New, Open, Save, SaveAs, CloseTab, NextTab, PrevTab, Undo, Redo]);
+actions!(led, [
+    // App/File
+    About, Quit, Exit, New, Open, Save, SaveAs, CloseTab,
+    // Edit
+    Undo, Redo, Cut, Copy, Paste, Find, Replace, SelectAll,
+    // Tabs
+    NextTab, PrevTab,
+    // View
+    GoToLine, ToggleLineNumbers, ToggleWordWrap, ToggleViMode,
+    // Search
+    SearchNext, SearchPrev, SearchReplace, SearchReplaceAll,
+    ToggleMatchCase, ToggleWholeWord, ToggleRegex,
+    // Other
+    NoOp
+]);
