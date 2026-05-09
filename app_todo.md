@@ -107,7 +107,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 > ### ✅ Phase 0 Completion Log
 >
 > - **Completed**: 2026-05-06
-> - **Commit**: `<placeholder-sha>`
+> - **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 > - **Implementer**: Gemini CLI
 > - **Files created**:
 >   - `Cargo.toml` - Workspace root configuration
@@ -155,7 +155,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 > ### ✅ Phase 1 Completion Log
 >
 > - **Completed**: 2026-05-06
-> - **Commit**: `<placeholder-sha>`
+> - **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 > - **Implementer**: Gemini CLI
 > - **Files created**:
 >   - `crates/led-core/src/config.rs` - Configuration management
@@ -202,7 +202,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 > ### ✅ Phase 2 Completion Log
 >
 > - **Completed**: 2026-05-06
-> - **Commit**: `<placeholder-sha>`
+> - **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 > - **Implementer**: Gemini CLI
 > - **Files created**:
 >   - `crates/led-tui/src/app.rs` - Main loop, event handling, and region rendering.
@@ -241,7 +241,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 ### ✅ Phase 3 Completion Log
 
 - **Completed**: 2026-05-06
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: Gemini CLI
 - **Files created**:
   - `crates/led-tui/src/widgets/mod.rs` - Widget module definition
@@ -286,7 +286,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 ### ✅ Phase 4 Completion Log
 
 - **Completed**: 2026-05-06
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: Gemini CLI
 - **Files created**:
   - `crates/led-tui/src/widgets/dialog.rs` (refined from stub)
@@ -378,7 +378,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 ### ✅ Phase 6 Completion Log
 
 - **Completed**: 2026-05-06
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: Gemini CLI
 - **Files created**: None
 - **Files modified**:
@@ -433,7 +433,7 @@ For all phases numbered 13 and above, also read `app_specs.md` Section 17 in ful
 ### ✅ Phase 8 Completion Log
 
 - **Completed**: 2026-05-06
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: Gemini CLI
 - **Files created**: None
 - **Files modified**:
@@ -735,7 +735,7 @@ Phases 13–16 build `led-gui` incrementally. Each phase produces a runnable bin
 ### ✅ Phase 14 Completion Log
 
 - **Completed**: 2026-05-09
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: Gemini CLI
 - **Files created**: None
 - **Files modified**:
@@ -819,7 +819,7 @@ This phase wires the full menu system and the find/replace panel. The menu bar i
 ### ✅ Phase 15 Completion Log
 
 - **Completed**: 2026-05-09
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: AI session
 - **Files created**:
   - `crates/led-gui/src/widgets/find_panel.rs` — Full implementation with search/replace logic.
@@ -883,7 +883,7 @@ This phase wires the full menu system and the find/replace panel. The menu bar i
 ### ✅ Phase 16 Completion Log
 
 - **Completed**: 2026-05-09
-- **Commit**: `<placeholder-sha>`
+- **Commit**: `d88e60f9c2ef97733417b870ebb15587c966af9b`
 - **Implementer**: AI session
 - **Files created**: None
 - **Files modified**:
