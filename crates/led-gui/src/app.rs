@@ -124,14 +124,34 @@ pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Ve
     });
 
     app.on_action(|_: &Quit, cx| {
-        if cx.windows().is_empty() {
+        let windows = cx.windows();
+        if windows.is_empty() {
             cx.quit();
+        } else {
+            let window = cx.active_window().unwrap_or(windows[0]);
+            let _ = cx.update_window(window, |any_view, _window, cx| {
+                if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                    view_handle.update(cx, |_, cx| {
+                        cx.dispatch_action(&Quit {});
+                    });
+                }
+            });
         }
     });
 
     app.on_action(|_: &Exit, cx| {
-        if cx.windows().is_empty() {
+        let windows = cx.windows();
+        if windows.is_empty() {
             cx.quit();
+        } else {
+            let window = cx.active_window().unwrap_or(windows[0]);
+            let _ = cx.update_window(window, |any_view, _window, cx| {
+                if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                    view_handle.update(cx, |_, cx| {
+                        cx.dispatch_action(&Exit {});
+                    });
+                }
+            });
         }
     });
 

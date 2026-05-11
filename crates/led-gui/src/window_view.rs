@@ -69,6 +69,17 @@ impl WindowView {
             match event {
                 DialogEvent::Close => {
                     this.dialog = None;
+                    if let Some(window_handle) = cx.active_window() {
+                        let _ = cx.update_window(window_handle, |any_view, window, cx| {
+                            if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                                view_handle.update(cx, |view, cx| {
+                                    view.editor.update(cx, |editor, cx| {
+                                        editor.focus_handle.focus(window, cx);
+                                    });
+                                });
+                            }
+                        });
+                    }
                     cx.notify();
                 }
                 DialogEvent::Save(intent) => {
@@ -77,6 +88,18 @@ impl WindowView {
                         cx.notify();
                     });
                     this.dialog = None;
+                    if let Some(window_handle) = cx.active_window() {
+                        let _ = cx.update_window(window_handle, |any_view, window, cx| {
+                            if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                                view_handle.update(cx, |view, cx| {
+                                    view.editor.update(cx, |editor, cx| {
+                                        editor.focus_handle.focus(window, cx);
+                                    });
+                                });
+                            }
+                        });
+                    }
+                    cx.notify();
                     match intent {
                         UnsavedChangesIntent::Quit => cx.dispatch_action(&Quit {}),
                         UnsavedChangesIntent::CloseTab => cx.dispatch_action(&CloseTab {}),
@@ -88,6 +111,18 @@ impl WindowView {
                         cx.notify();
                     });
                     this.dialog = None;
+                    if let Some(window_handle) = cx.active_window() {
+                        let _ = cx.update_window(window_handle, |any_view, window, cx| {
+                            if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                                view_handle.update(cx, |view, cx| {
+                                    view.editor.update(cx, |editor, cx| {
+                                        editor.focus_handle.focus(window, cx);
+                                    });
+                                });
+                            }
+                        });
+                    }
+                    cx.notify();
                     if *intent == UnsavedChangesIntent::Quit {
                         cx.dispatch_action(&Quit {});
                     }
@@ -464,16 +499,24 @@ impl WindowView {
         }
 
         // Check other windows
-        let current_handle = window.window_handle();
-        let other_windows: Vec<_> = cx.windows().into_iter().filter(|w| *w != current_handle).collect();
-        for hw in other_windows {
+        let my_id = cx.entity().entity_id();
+        for hw in cx.windows() {
+            let mut is_me = false;
             let modified = cx.update_window(hw, |any_view, _window, cx| {
+                if any_view.entity_id() == my_id {
+                    is_me = true;
+                    return false;
+                }
                 if let Ok(view_handle) = any_view.downcast::<WindowView>() {
                     view_handle.read(cx).workspace.read(cx).has_modified_buffers()
                 } else {
                     false
                 }
             }).unwrap_or(false);
+
+            if is_me {
+                continue;
+            }
 
             if modified {
                 let _ = cx.update_window(hw, |_any_view, window, cx| {
