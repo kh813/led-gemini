@@ -5,8 +5,10 @@ use crate::window_view::WindowView;
 use crate::workspace::Workspace;
 use anyhow::Result;
 use serde_json;
+use futures::StreamExt;
+use url::Url;
 
-pub fn setup_app(app: &mut App) {
+pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Vec<String>>) {
     let config = Config::load();
     let i18n = I18n::load(&config.language);
 
@@ -129,13 +131,61 @@ pub fn setup_app(app: &mut App) {
     });
 
     // Initial window
-    new_window(config, i18n, app);
+    new_window(config.clone(), i18n.clone(), app);
+
+    // Handle files dropped on the Dock icon or opened via Finder
+    app.spawn(|cx: &mut AsyncApp| {
+        let cx = cx.clone();
+        let mut rx = rx;
+        async move {
+            while let Some(urls) = rx.next().await {
+                let config = Config::load();
+                let i18n = I18n::load(&config.language);
+                let paths: Vec<_> = urls.into_iter()
+                    .filter_map(|u| {
+                        if let Ok(url) = Url::parse(&u) {
+                            url.to_file_path().ok()
+                        } else {
+                            Some(std::path::PathBuf::from(u))
+                        }
+                    })
+                    .collect();
+                
+                if !paths.is_empty() {
+                    cx.update(|cx| {
+                        open_paths(paths, config, i18n, cx);
+                    });
+                }
+            }
+        }
+    }).detach();
 }
 
-fn new_window(config: Config, i18n: I18n, cx: &mut App) {
+pub fn new_window(config: Config, i18n: I18n, cx: &mut App) {
     cx.open_window(WindowOptions::default(), move |window, cx| {
         let workspace = cx.new(|_| Workspace::new(config.clone()));
         cx.new(|cx| WindowView::new(config, i18n, workspace, window, cx))
+    }).expect("Failed to open window");
+}
+
+pub fn open_paths(paths: Vec<std::path::PathBuf>, config: Config, i18n: I18n, cx: &mut App) {
+    cx.open_window(WindowOptions::default(), move |window, cx| {
+        let workspace = cx.new(|_| {
+            let mut w = Workspace::new(config.clone());
+            let mut opened_any = false;
+            for path in paths {
+                if let Ok(editor) = led_core::buffer::Editor::from_file(&path) {
+                    w.add_editor(editor);
+                    opened_any = true;
+                }
+            }
+            if opened_any && w.editors.len() > 1 {
+                w.editors.remove(0);
+                w.active_editor_index = w.editors.len() - 1;
+            }
+            w
+        });
+        cx.new(|cx| WindowView::new(config.clone(), i18n.clone(), workspace, window, cx))
     }).expect("Failed to open window");
 }
 

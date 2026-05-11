@@ -41,12 +41,12 @@
 
 - [x] Achieve menu parity with TUI (full Encoding and Line Ending support)
 - [x] Fix dialog positioning and window bounding
-- [ ] **Implement file drag-and-drop support**:
-  - [ ] Register drag-and-drop event handler in `app.rs` or `window_view.rs`
-  - [ ] Implement path extraction from drop events
-  - [ ] Add logic to check for existing tabs before opening new ones
-  - [ ] Ensure the last dropped file becomes the active tab
-  - [ ] Verify handling of multiple files dropped at once
+- [x] **Implement file drag-and-drop support**:
+  - [x] Register drag-and-drop event handler in `app.rs` or `window_view.rs`
+  - [x] Implement path extraction from drop events
+  - [x] Add logic to check for existing tabs before opening new ones
+  - [x] Ensure the last dropped file becomes the active tab
+  - [x] Verify handling of multiple files dropped at once
 
 ### Common / Others
 - [ ] Integrate application icons:

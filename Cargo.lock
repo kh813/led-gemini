@@ -2904,6 +2904,7 @@ name = "led-gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "gpui",
  "gpui_platform",
  "led-core",
@@ -2911,6 +2912,7 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode-width",
+ "url",
 ]
 
 [[package]]

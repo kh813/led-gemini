@@ -28,6 +28,12 @@ impl Workspace {
     }
 
     pub fn add_editor(&mut self, editor: Editor) {
+        if let Some(path) = &editor.path {
+            if let Some(idx) = self.editors.iter().position(|e| e.path.as_ref() == Some(path)) {
+                self.active_editor_index = idx;
+                return;
+            }
+        }
         self.editors.push(editor);
         self.active_editor_index = self.editors.len() - 1;
     }

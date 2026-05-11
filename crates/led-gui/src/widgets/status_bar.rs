@@ -7,7 +7,10 @@ pub struct StatusBar {
 }
 
 impl StatusBar {
-    pub fn new(workspace: Entity<Workspace>, _cx: &mut Context<Self>) -> Self {
+    pub fn new(workspace: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&workspace, |_, _, cx| {
+            cx.notify();
+        }).detach();
         Self { workspace }
     }
 }

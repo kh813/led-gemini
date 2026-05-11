@@ -44,6 +44,10 @@ impl WindowView {
             editor.focus_handle.focus(window, cx);
         });
 
+        cx.observe(&workspace, |_, _, cx| {
+            cx.notify();
+        }).detach();
+
         Self {
             config,
             i18n,
@@ -549,6 +553,21 @@ impl Render for WindowView {
             .on_action(cx.listener(Self::handle_about))
             .on_action(cx.listener(Self::handle_quit))
             .on_action(cx.listener(Self::handle_exit))
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _window, cx| {
+                let mut opened_any = false;
+                for path in paths.paths() {
+                    if let Ok(editor) = Editor::from_file(path) {
+                        this.workspace.update(cx, |w, cx| {
+                            w.add_editor(editor);
+                            cx.notify();
+                        });
+                        opened_any = true;
+                    }
+                }
+                if opened_any {
+                    cx.notify();
+                }
+            }))
             .child(self.render_layout())
             .child(if let Some(ref dialog) = self.dialog {
                 div()

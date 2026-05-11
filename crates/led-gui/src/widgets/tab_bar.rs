@@ -8,7 +8,10 @@ pub struct TabBar {
 }
 
 impl TabBar {
-    pub fn new(workspace: Entity<Workspace>, _cx: &mut Context<Self>) -> Self {
+    pub fn new(workspace: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&workspace, |_, _, cx| {
+            cx.notify();
+        }).detach();
         Self { 
             workspace,
             scroll_offset: px(0.0),

@@ -63,6 +63,20 @@ gui:
 	@echo '    <string>0.1.0</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <key>CFBundleIconFile</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <string>led.icns</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundleDocumentTypes</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <array>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '        <dict>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            <key>CFBundleTypeName</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            <string>All Files</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            <key>CFBundleTypeRole</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            <string>Editor</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            <key>LSItemContentTypes</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            <array>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '                <string>public.data</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '                <string>public.content</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '            </array>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '        </dict>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    </array>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <key>LSMinimumSystemVersion</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <string>10.15.7</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '</dict>' >> $(DIST_DIR)/led.app/Contents/Info.plist
