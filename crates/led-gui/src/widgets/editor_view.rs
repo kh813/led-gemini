@@ -443,7 +443,7 @@ impl EditorView {
             line_str.pop();
         }
         
-        let (cursor_line, cursor_col) = editor.char_to_line_col(editor.cursor);
+        let (cursor_line, _) = editor.char_to_line_col(editor.cursor);
         let is_cursor_line = line_idx == cursor_line;
 
         let editor_bg = led_color_to_gpui(theme.editor.background);
@@ -454,18 +454,6 @@ impl EditorView {
         };
 
         let gutter_width = if workspace.config.line_numbers { px(50.0) } else { px(0.0) };
-
-        // Calculate visual column for cursor
-        let mut visual_cursor_col = 0;
-        let tab_size = workspace.config.tab_size as usize;
-        for (i, c) in line.chars().enumerate() {
-            if i >= cursor_col { break; }
-            if c == '\t' {
-                visual_cursor_col += tab_size - (visual_cursor_col % tab_size);
-            } else {
-                visual_cursor_col += c.width().unwrap_or(0);
-            }
-        }
 
         // Measure average character width for scrolling/cursor
         let char_width = 8.4; // Default fallback
@@ -504,27 +492,6 @@ impl EditorView {
                             .items_center()
                             .children(self.render_line_content(line_idx, &line_str, workspace, is_cursor_line))
                     )
-                    .child(if is_cursor_line {
-                        let cursor_x = visual_cursor_col as f32 * char_width;
-                        let mut preedit_visual_width = 0;
-                        if let Some(ref preedit) = self.preedit_text {
-                            for c in preedit.chars() {
-                                preedit_visual_width += c.width().unwrap_or(0);
-                            }
-                        }
-                        let preedit_w = preedit_visual_width as f32 * char_width;
-                        
-                        // Render cursor at the end of preedit text
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left(px(cursor_x + preedit_w - (editor.scroll_col as f32 * char_width)))
-                            .w(px(2.0))
-                            .h_full()
-                            .bg(led_color_to_gpui(theme.editor.cursor))
-                    } else {
-                        div()
-                    })
             )
     }
 
@@ -537,36 +504,54 @@ impl EditorView {
         let (_, cursor_col) = editor.char_to_line_col(editor.cursor);
 
         let mut elements = Vec::new();
-        let mut preedit_rendered = false;
+        let mut cursor_rendered = false;
+
+        let render_cursor = |elements: &mut Vec<AnyElement>| {
+            if let Some(ref preedit) = self.preedit_text {
+                elements.push(self.render_preedit_element(preedit, theme));
+            }
+            // Cursor bar that doesn't take space
+            elements.push(
+                div()
+                    .relative()
+                    .w(px(0.0))
+                    .h_full()
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .w(px(2.0))
+                            .h_full()
+                            .bg(led_color_to_gpui(theme.editor.cursor))
+                    )
+                    .into_any_element()
+            );
+        };
 
         // Helper to render a chunk of text with potential selection highlight
-        let mut render_chunk = |text: &str, start_char: usize, token_color: Option<Rgba>| {
+        let mut render_chunk = |text: &str, start_char: usize, token_color: Option<Rgba>, elements: &mut Vec<AnyElement>| {
             if text.is_empty() { return; }
             let chunk_chars: Vec<char> = text.chars().collect();
             let chunk_len = chunk_chars.len();
             let chunk_start_col = start_char - line_start_char;
             
-            // If this is the cursor line and we have preedit text, 
-            // we might need to split this chunk to insert the preedit text
-            if is_cursor_line && self.preedit_text.is_some() && !preedit_rendered {
+            // If this is the cursor line, we might need to split this chunk to insert the preedit text and cursor
+            if is_cursor_line && !cursor_rendered {
                 if cursor_col >= chunk_start_col && cursor_col <= chunk_start_col + chunk_len {
                     let split_idx = cursor_col - chunk_start_col;
                     let part1 = chunk_chars[..split_idx].iter().collect::<String>();
                     let part2 = chunk_chars[split_idx..].iter().collect::<String>();
                     
-                    self.render_chunk_internal(&part1, start_char, token_color, selection.clone(), theme, &mut elements);
-                    
-                    if let Some(ref preedit) = self.preedit_text {
-                        elements.push(self.render_preedit_element(preedit, theme));
-                    }
-                    preedit_rendered = true;
-                    
-                    self.render_chunk_internal(&part2, start_char + split_idx, token_color, selection.clone(), theme, &mut elements);
+                    self.render_chunk_internal(&part1, start_char, token_color, selection.clone(), theme, elements);
+                    render_cursor(elements);
+                    cursor_rendered = true;
+                    self.render_chunk_internal(&part2, start_char + split_idx, token_color, selection.clone(), theme, elements);
                     return;
                 }
             }
 
-            self.render_chunk_internal(text, start_char, token_color, selection.clone(), theme, &mut elements);
+            self.render_chunk_internal(text, start_char, token_color, selection.clone(), theme, elements);
         };
 
         if let Some(Some(tokens)) = editor.line_tokens.get(line_idx) {
@@ -575,27 +560,25 @@ impl EditorView {
                 if token.byte_range.start > last_offset {
                     let text = &line_str[last_offset..token.byte_range.start];
                     let start_char = line_start_char + line_str[..last_offset].chars().count();
-                    render_chunk(text, start_char, None);
+                    render_chunk(text, start_char, None, &mut elements);
                 }
                 let text = &line_str[token.byte_range.clone()];
                 let start_char = start_char_from_byte_offset(&line_str, token.byte_range.start, line_start_char);
-                render_chunk(text, start_char, Some(self.token_color(token.token, theme)));
+                render_chunk(text, start_char, Some(self.token_color(token.token, theme)), &mut elements);
                 last_offset = token.byte_range.end;
             }
             if last_offset < line_str.len() {
                 let text = &line_str[last_offset..];
                 let start_char = start_char_from_byte_offset(&line_str, last_offset, line_start_char);
-                render_chunk(text, start_char, None);
+                render_chunk(text, start_char, None, &mut elements);
             }
         } else {
-            render_chunk(line_str, line_start_char, None);
+            render_chunk(line_str, line_start_char, None, &mut elements);
         }
 
         // If line is empty or cursor was at the very end and no chunk captured it
-        if is_cursor_line && !preedit_rendered {
-            if let Some(ref preedit) = self.preedit_text {
-                elements.push(self.render_preedit_element(preedit, theme));
-            }
+        if is_cursor_line && !cursor_rendered {
+            render_cursor(&mut elements);
         }
 
         elements
