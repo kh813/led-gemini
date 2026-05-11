@@ -1,6 +1,6 @@
 use gpui::*;
 use crate::workspace::Workspace;
-use led_core::theme::{Color as LedColor};
+use crate::widgets::led_color_to_gpui;
 
 pub struct TabBar {
     workspace: Entity<Workspace>,
@@ -13,10 +13,6 @@ impl TabBar {
             workspace,
             scroll_offset: px(0.0),
         }
-    }
-
-    fn led_color_to_gpui(&self, color: LedColor) -> Rgba {
-        rgb((color.0 as u32) << 16 | (color.1 as u32) << 8 | (color.2 as u32))
     }
 
     fn handle_scroll(&mut self, event: &ScrollWheelEvent, cx: &mut Context<Self>) {
@@ -33,13 +29,13 @@ impl Render for TabBar {
         let active_index = workspace.active_editor_index;
 
         div()
-            .h_8()
+            .h(px(32.0))
             .w_full()
             .flex()
             .items_center()
-            .bg(self.led_color_to_gpui(theme.ui.tab_bar_bg))
+            .bg(led_color_to_gpui(theme.ui.tab_bar_bg))
             .border_b_1()
-            .border_color(self.led_color_to_gpui(theme.editor.line_number))
+            .border_color(led_color_to_gpui(theme.editor.line_number))
             .on_scroll_wheel(cx.listener(|this, event, _, cx| {
                 this.handle_scroll(event, cx);
             }))
@@ -52,6 +48,7 @@ impl Render for TabBar {
                         div()
                             .flex()
                             .h_full()
+                            .items_center()
                             .ml(self.scroll_offset)
                             .children(
                                 workspace.editors.iter().enumerate().map(|(idx, editor)| {
@@ -64,14 +61,14 @@ impl Render for TabBar {
                                     let ro_flag = if editor.read_only { " [RO]" } else { "" };
 
                                     let bg_color = if is_active { 
-                                        self.led_color_to_gpui(theme.ui.tab_active_bg) 
+                                        led_color_to_gpui(theme.ui.tab_active_bg) 
                                     } else { 
-                                        self.led_color_to_gpui(theme.ui.tab_inactive_bg) 
+                                        led_color_to_gpui(theme.ui.tab_inactive_bg) 
                                     };
                                     let text_color = if is_active { 
-                                        self.led_color_to_gpui(theme.ui.tab_active_fg) 
+                                        led_color_to_gpui(theme.ui.tab_active_fg) 
                                     } else { 
-                                        self.led_color_to_gpui(theme.ui.tab_inactive_fg) 
+                                        led_color_to_gpui(theme.ui.tab_inactive_fg) 
                                     };
 
                                     div()
@@ -81,11 +78,14 @@ impl Render for TabBar {
                                         .h_full()
                                         .bg(bg_color)
                                         .text_color(text_color)
+                                        .text_size(px(12.0))
+                                        .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
                                         .border_r_1()
-                                        .border_color(self.led_color_to_gpui(theme.editor.line_number))
+                                        .border_color(led_color_to_gpui(theme.editor.line_number))
                                         .child(
                                             div()
                                                 .flex()
+                                                .h_full()
                                                 .items_center()
                                                 .child(format!("{}{}{}", file_name, modified_flag, ro_flag))
                                                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
@@ -97,6 +97,9 @@ impl Render for TabBar {
                                         )
                                         .child(
                                             div()
+                                                .h_full()
+                                                .flex()
+                                                .items_center()
                                                 .ml_2()
                                                 .child("×")
                                                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
@@ -107,13 +110,6 @@ impl Render for TabBar {
                                                     cx.notify();
                                                 }))
                                         )
-                                        .on_mouse_down(MouseButton::Middle, cx.listener(move |this, _, _, cx| {
-                                            this.workspace.update(cx, |w, _| {
-                                                w.active_editor_index = idx;
-                                                w.close_active_editor();
-                                            });
-                                            cx.notify();
-                                        }))
                                 }).collect::<Vec<_>>()
                             )
                     )

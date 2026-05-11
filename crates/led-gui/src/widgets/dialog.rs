@@ -1,6 +1,7 @@
 use gpui::*;
 use crate::workspace::Workspace;
 use led_core::i18n::I18n;
+use crate::widgets::led_color_to_gpui;
 
 pub enum DialogType {
     About,
@@ -163,7 +164,6 @@ impl Dialog {
     }
 
     fn close(&mut self, cx: &mut Context<Self>) {
-        // This will be handled by WindowView which holds the entity
         cx.emit(DialogEvent::Close);
     }
 }
@@ -181,9 +181,9 @@ impl Render for Dialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace.read(cx);
         let theme = &workspace.theme;
-        let bg = rgb((theme.ui.dialog_bg.0 as u32) << 16 | (theme.ui.dialog_bg.1 as u32) << 8 | (theme.ui.dialog_bg.2 as u32));
-        let fg = rgb((theme.editor.foreground.0 as u32) << 16 | (theme.editor.foreground.1 as u32) << 8 | (theme.editor.foreground.2 as u32));
-        let border = rgb((theme.ui.dialog_border.0 as u32) << 16 | (theme.ui.dialog_border.1 as u32) << 8 | (theme.ui.dialog_border.2 as u32));
+        let bg = led_color_to_gpui(theme.ui.dialog_bg);
+        let fg = led_color_to_gpui(theme.editor.foreground);
+        let border = led_color_to_gpui(theme.ui.dialog_border);
 
         div()
             .absolute()
@@ -195,20 +195,22 @@ impl Render for Dialog {
             .items_center()
             .justify_center()
             .bg(rgba(0x00000066)) // Dim background
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                // Close on click outside if not unsaved changes?
-                // For now, let's keep it modal.
-            }))
             .child(
                 div()
-                    .w(px(400.0))
+                    .w(px(500.0))
+                    .max_h(px(600.0))
                     .bg(bg)
                     .text_color(fg)
+                    .text_size(px(14.0))
+                    .line_height(px(20.0))
+                    .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
                     .border_1()
                     .border_color(border)
                     .shadow_xl()
                     .px_4()
                     .py_4()
+                    .flex()
+                    .flex_col()
                     .track_focus(&self.focus_handle)
                     .on_key_down(cx.listener(Self::handle_keydown))
                     .child(self.render_content(cx))
@@ -218,6 +220,9 @@ impl Render for Dialog {
 
 impl Dialog {
     fn render_content(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let workspace = self.workspace.read(cx);
+        let theme = &workspace.theme;
+
         match &self.dialog_type {
             DialogType::About => {
                 div()
@@ -225,12 +230,16 @@ impl Dialog {
                     .flex_col()
                     .items_center()
                     .gap_2()
-                    .child(div().text_size(px(20.0)).child("led-gui"))
-                    .child(div().child(format!("{} 0.1.0", self.i18n.get("about.version"))))
-                    .child(div().child("MIT License"))
+                    .child(div().h_full().flex().items_center().text_size(px(20.0)).child("led-gui"))
+                    .child(div().h_full().flex().items_center().child(format!("{} 0.1.0", self.i18n.get("about.version"))))
+                    .child(div().h_full().flex().items_center().child("MIT License"))
                     .child(
                         div()
                             .mt_4()
+                            .h_8()
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close(cx)))
                             .child(self.i18n.get("dialog.ok").to_string())
                     )
@@ -240,13 +249,13 @@ impl Dialog {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(self.i18n.get("dialog.go_to_line").to_string())
+                    .child(div().h_8().flex().items_center().child(self.i18n.get("dialog.go_to_line").to_string()))
                     .child(
                         div()
                             .h_8()
-                            .bg(rgb(0x24283b))
+                            .bg(led_color_to_gpui(theme.ui.panel_bg))
                             .border_1()
-                            .border_color(rgb(0x3b4261))
+                            .border_color(led_color_to_gpui(theme.ui.dialog_border))
                             .px_2()
                             .flex()
                             .items_center()
@@ -264,39 +273,43 @@ impl Dialog {
                     .flex()
                     .flex_col()
                     .gap_2()
-                    .child(title.to_string())
-                    .child(div().text_size(px(12.0)).child(self.current_dir.to_string_lossy().into_owned()))
+                    .child(div().h_8().flex().items_center().child(title.to_string()))
+                    .child(div().h_6().flex().items_center().text_size(px(12.0)).child(self.current_dir.to_string_lossy().into_owned()))
                     .child(
                         div()
-                            .h(px(200.0))
+                            .flex_grow()
+                            .min_h(px(200.0))
                             .overflow_hidden()
-                            .bg(rgb(0x1a1b26))
+                            .bg(led_color_to_gpui(theme.editor.background))
                             .border_1()
-                            .border_color(rgb(0x3b4261))
+                            .border_color(led_color_to_gpui(theme.ui.dialog_border))
                             .children(self.files.iter().enumerate().map(|(idx, entry)| {
                                 let is_selected = idx == self.selected_idx;
                                 div()
+                                    .h(px(24.0))
                                     .flex()
+                                    .items_center()
                                     .justify_between()
-                                    .bg(if is_selected { rgb(0x283457) } else { hsla(0.,0.,0.,0.).into() })
-                                    .child(div().px_2().child(format!("{}{}", entry.name, if entry.is_dir { "/" } else { "" })))
-                                    .child(div().px_2().child(if entry.is_dir { "--".to_string() } else { self.format_size(entry.size) }))
+                                    .bg(if is_selected { led_color_to_gpui(theme.editor.selection) } else { hsla(0.,0.,0.,0.).into() })
+                                    .child(div().h_full().flex().items_center().px_2().child(format!("{}{}", entry.name, if entry.is_dir { "/" } else { "" })))
+                                    .child(div().h_full().flex().items_center().px_2().child(if entry.is_dir { "--".to_string() } else { self.format_size(entry.size) }))
                             }))
                     )
                     .child(
                         div()
                             .mt_2()
+                            .h_8()
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(self.i18n.get("dialog.file_browser.filename").to_string())
+                            .child(div().h_full().flex().items_center().child(self.i18n.get("dialog.file_browser.filename").to_string()))
                             .child(
                                 div()
                                     .flex_grow()
-                                    .h_8()
-                                    .bg(rgb(0x24283b))
+                                    .h_full()
+                                    .bg(led_color_to_gpui(theme.ui.panel_bg))
                                     .border_1()
-                                    .border_color(rgb(0x3b4261))
+                                    .border_color(led_color_to_gpui(theme.ui.dialog_border))
                                     .px_2()
                                     .flex()
                                     .items_center()
@@ -311,16 +324,25 @@ impl Dialog {
                             .mt_2()
                             .child(
                                 div()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.confirm(cx)))
                                     .px_4()
-                                    .bg(rgb(0x3b4261))
+                                    .bg(led_color_to_gpui(theme.ui.button_active_bg))
+                                    .text_color(led_color_to_gpui(theme.ui.button_active_fg))
                                     .child(self.i18n.get("dialog.ok").to_string())
                             )
                             .child(
                                 div()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close(cx)))
                                     .px_4()
-                                    .bg(rgb(0x3b4261))
+                                    .bg(led_color_to_gpui(theme.ui.panel_bg))
                                     .child(self.i18n.get("dialog.cancel").to_string())
                             )
                     )
@@ -330,8 +352,8 @@ impl Dialog {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(self.i18n.get("dialog.unsaved_changes_title").to_string())
-                    .child(self.i18n.get("dialog.unsaved_changes").replace("{filename}", filename))
+                    .child(div().h_8().flex().items_center().child(self.i18n.get("dialog.unsaved_changes_title").to_string()))
+                    .child(div().flex().items_center().child(self.i18n.get("dialog.unsaved_changes").replace("{filename}", filename)))
                     .child(
                         div()
                             .flex()
@@ -339,29 +361,42 @@ impl Dialog {
                             .gap_2()
                             .child(
                                 div()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                                         cx.emit(DialogEvent::Save);
                                         this.close(cx);
                                     }))
-                                    .px_2()
-                                    .bg(rgb(0x3b4261))
+                                    .px_4()
+                                    .bg(led_color_to_gpui(theme.ui.button_active_bg))
+                                    .text_color(led_color_to_gpui(theme.ui.button_active_fg))
                                     .child(self.i18n.get("dialog.save").to_string())
                             )
                             .child(
                                 div()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
                                         cx.emit(DialogEvent::DontSave);
                                         this.close(cx);
                                     }))
-                                    .px_2()
-                                    .bg(rgb(0x3b4261))
+                                    .px_4()
+                                    .bg(led_color_to_gpui(theme.ui.panel_bg))
                                     .child(self.i18n.get("dialog.dont_save").to_string())
                             )
                             .child(
                                 div()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close(cx)))
-                                    .px_2()
-                                    .bg(rgb(0x3b4261))
+                                    .px_4()
+                                    .bg(led_color_to_gpui(theme.ui.panel_bg))
                                     .child(self.i18n.get("dialog.cancel").to_string())
                             )
                     )
@@ -371,17 +406,22 @@ impl Dialog {
                     .flex()
                     .flex_col()
                     .gap_4()
-                    .child(title.clone())
-                    .child(message.clone())
+                    .child(div().h_8().flex().items_center().child(title.clone()))
+                    .child(div().flex().items_center().child(message.clone()))
                     .child(
                         div()
                             .flex()
                             .justify_end()
                             .child(
                                 div()
+                                    .h_8()
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close(cx)))
-                                    .px_2()
-                                    .bg(rgb(0x3b4261))
+                                    .px_4()
+                                    .bg(led_color_to_gpui(theme.ui.button_active_bg))
+                                    .text_color(led_color_to_gpui(theme.ui.button_active_fg))
                                     .child(self.i18n.get("dialog.ok").to_string())
                             )
                     )

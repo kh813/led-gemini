@@ -13,6 +13,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use crate::renderer::{Renderer, Cell};
 use crate::layout::Layout;
 use crate::widgets::menu::{Menu, MenuItem};
+use crate::widgets::find_panel::PanelField;
 use crate::widgets::dialog::{self, Dialog, DialogResult};
 use led_core::{Action, Config, I18n, Encoding, LineEnding, buffer::Editor};
 
@@ -383,9 +384,10 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) {
-        if key.modifiers == KeyModifiers::CONTROL {
+        // Global shortcuts (Ctrl+...) only if not in a dialog
+        if self.focus != Focus::Dialog && key.modifiers == KeyModifiers::CONTROL {
             match key.code {
-                KeyCode::Char('q') => { self.running = false; return; }
+                KeyCode::Char('q') => { self.perform_action(Action::Exit); return; }
                 KeyCode::Char('n') => { self.perform_action(Action::New); return; }
                 KeyCode::Char('o') => { self.perform_action(Action::Open); return; }
                 KeyCode::Char('s') => { self.perform_action(Action::Save); return; }
@@ -406,7 +408,7 @@ impl App {
                 _ => {}
             }
         }
-        if key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT) {
+        if self.focus != Focus::Dialog && key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT) {
             match key.code {
                 KeyCode::Char('S') | KeyCode::Char('s') => { self.perform_action(Action::SaveAs); return; }
                 KeyCode::Tab | KeyCode::BackTab => {
@@ -422,8 +424,8 @@ impl App {
             }
         }
 
-        // Handle Alt shortcuts for menus
-        if key.modifiers == KeyModifiers::ALT {
+        // Handle Alt shortcuts for menus (only if not in a dialog)
+        if self.focus != Focus::Dialog && key.modifiers == KeyModifiers::ALT {
             match key.code {
                 KeyCode::Char('f') => { self.open_menu(0); return; }
                 KeyCode::Char('e') => { self.open_menu(1); return; }
@@ -962,6 +964,14 @@ impl App {
                             _ => {}
                         }
                     }
+                    dialog::Action::ConfirmLine(line) => {
+                        if let Some(buffer) = self.buffers.get_mut(self.active_buffer) {
+                            buffer.cursor = buffer.rope.line_to_char(line.saturating_sub(1).min(buffer.line_count().saturating_sub(1)));
+                            buffer.selection = None;
+                            buffer.selection_anchor = None;
+                            self.ensure_cursor_visible();
+                        }
+                    }
                     dialog::Action::Confirm => {}
                     dialog::Action::Save => {
                         let op = self.pending_op;
@@ -971,7 +981,7 @@ impl App {
                                 if let Some(buffer) = self.buffers.get_mut(self.active_buffer) {
                                     if let Ok(()) = buffer.save() {
                                         if op == PendingOp::Exit {
-                                            self.running = false;
+                                            self.perform_action(Action::Exit);
                                         } else {
                                             self.buffers.remove(self.active_buffer);
                                             if self.buffers.is_empty() {
@@ -1000,7 +1010,14 @@ impl App {
                         let op = self.pending_op;
                         self.pending_op = PendingOp::None;
                         match op {
-                            PendingOp::Exit => self.running = false,
+                            PendingOp::Exit => {
+                                self.buffers.remove(self.active_buffer);
+                                if self.buffers.is_empty() {
+                                    self.buffers.push(Editor::new());
+                                }
+                                self.active_buffer = self.active_buffer.min(self.buffers.len() - 1);
+                                self.perform_action(Action::Exit);
+                            }
                             PendingOp::Close => {
                                 self.buffers.remove(self.active_buffer);
                                 if self.buffers.is_empty() {
@@ -1526,32 +1543,32 @@ impl App {
                 self.layout.recompute(&self.menus, &self.buffers, self.active_buffer, self.config.line_numbers);
                 self.run_search();
             }
+            Action::GoToLine => {
+                self.focus = Focus::Dialog;
+                self.pending_op = PendingOp::None;
+                self.current_dialog = Some(Box::new(dialog::GoToLineDialog::new(&self.i18n)));
+            }
             Action::Exit => {
-                let any_modified = self.buffers.iter().any(|b| b.is_modified());
-                if any_modified {
-                    // For exit, we might want to check ALL buffers, but for now just active one is simpler
-                    // Spec says "Close/Exit with unsaved changes"
-                    if let Some(buffer) = self.buffers.get(self.active_buffer) {
-                        if buffer.is_modified() {
-                            self.focus = Focus::Dialog;
-                            self.pending_op = PendingOp::Exit;
-                            let filename = buffer.path.as_ref().and_then(|p| p.file_name()).map(|f| f.to_string_lossy()).unwrap_or_else(|| std::borrow::Cow::Borrowed(self.i18n.get("status.no_name")));
-                            self.current_dialog = Some(Box::new(dialog::MessageDialog::new(
-                                self.i18n.get("dialog.unsaved_changes_title").to_string(),
-                                self.i18n.get("dialog.unsaved_changes").replace("{filename}", &filename),
-                                vec![
-                                    (self.i18n.get("dialog.save").to_string(), dialog::Action::Save),
-                                    (self.i18n.get("dialog.dont_save").to_string(), dialog::Action::DontSave),
-                                    (self.i18n.get("dialog.cancel").to_string(), dialog::Action::Cancel),
-                                ]
-                            )));
-                            return;
-                        }
-
-                    }
+                if let Some((idx, buffer)) = self.buffers.iter().enumerate().find(|(_, b)| b.is_modified()) {
+                    self.active_buffer = idx; // Switch to the modified buffer to show it
+                    self.focus = Focus::Dialog;
+                    self.pending_op = PendingOp::Exit;
+                    let filename = buffer.path.as_ref().and_then(|p| p.file_name()).map(|f| f.to_string_lossy()).unwrap_or_else(|| std::borrow::Cow::Borrowed(self.i18n.get("status.no_name")));
+                    self.current_dialog = Some(Box::new(dialog::MessageDialog::new(
+                        self.i18n.get("dialog.unsaved_changes_title").to_string(),
+                        self.i18n.get("dialog.unsaved_changes").replace("{filename}", &filename),
+                        vec![
+                            (self.i18n.get("dialog.save").to_string(), dialog::Action::Save),
+                            (self.i18n.get("dialog.dont_save").to_string(), dialog::Action::DontSave),
+                            (self.i18n.get("dialog.cancel").to_string(), dialog::Action::Cancel),
+                        ]
+                    )));
+                    self.layout.recompute(&self.menus, &self.buffers, self.active_buffer, self.config.line_numbers);
+                    return;
                 }
                 self.running = false;
             }
+
             Action::Undo => {
                 if let Some(buffer) = self.buffers.get_mut(self.active_buffer) {
                     buffer.undo();
@@ -1924,10 +1941,75 @@ impl App {
             let (dw, dh) = dialog.dimensions();
             let x = (self.width.saturating_sub(dw)) / 2;
             let y = (self.height.saturating_sub(dh)) / 2;
-            dialog.render(&mut self.renderer, x, y, dw, dh);
+            dialog.render(&mut self.renderer, &self.theme, x, y, dw, dh);
         }
 
         self.renderer.present(stdout)?;
+
+        // Move terminal cursor to the logical cursor position for IME
+        if self.current_dialog.is_none() && self.active_menu.is_none() {
+            // Hardware cursor for focused editor
+            if self.focus == Focus::Editor {
+                let (ex, ey, ew, eh) = self.layout.editor_bounds();
+                let buffer = &self.buffers[self.active_buffer];
+                let (line, col) = buffer.char_to_line_col(buffer.cursor);
+                
+                if line >= buffer.scroll_row {
+                    let mut visual_x = 0;
+                    let line_slice = buffer.rope.line(line);
+                    let tab_size = self.config.tab_size as usize;
+                    for (i, c) in line_slice.chars().enumerate() {
+                        if i >= col { break; }
+                        if c == '\t' {
+                            visual_x += tab_size - (visual_x % tab_size);
+                        } else {
+                            visual_x += c.width().unwrap_or(0);
+                        }
+                    }
+
+                    if visual_x >= buffer.scroll_col && visual_x < buffer.scroll_col + ew as usize {
+                        let rx = ex + (visual_x - buffer.scroll_col) as u16;
+                        let ry = ey + (line - buffer.scroll_row) as u16;
+                        if ry < ey + eh {
+                            execute!(stdout, cursor::Show, cursor::MoveTo(rx, ry))?;
+                        } else {
+                            execute!(stdout, cursor::Hide)?;
+                        }
+                    } else {
+                        execute!(stdout, cursor::Hide)?;
+                    }
+                } else {
+                    execute!(stdout, cursor::Hide)?;
+                }
+            } else if self.focus == Focus::Panel {
+                // Focus hardware cursor on find panel input
+                let (px, py, _pw, _ph) = self.layout.panel_bounds();
+                let cursor_x = match self.find_panel.focused_field {
+                    PanelField::FindInput => px + 9 + self.find_panel.find_text.chars().count() as u16,
+                    PanelField::ReplaceInput => px + 9 + self.find_panel.replace_text.chars().count() as u16,
+                    _ => 0,
+                };
+                if cursor_x > 0 {
+                    execute!(stdout, cursor::Show, cursor::MoveTo(cursor_x, py))?;
+                } else {
+                    execute!(stdout, cursor::Hide)?;
+                }
+            } else if self.focus == Focus::Dialog {
+                if let Some(ref dialog) = self.current_dialog {
+                    if let Some((dx, dy)) = dialog.cursor_pos() {
+                        let (x, y, _w, _h) = self.layout.dialog_bounds(dialog.dimensions());
+                        execute!(stdout, cursor::Show, cursor::MoveTo(x + dx, y + dy))?;
+                    } else {
+                        execute!(stdout, cursor::Hide)?;
+                    }
+                } else {
+                    execute!(stdout, cursor::Hide)?;
+                }
+            } else {
+                execute!(stdout, cursor::Hide)?;
+            }
+        }
+        stdout.flush()?;
         Ok(())
     }
 
@@ -2320,20 +2402,28 @@ impl App {
         let selection_bg = Self::to_ct_color(self.theme.editor.selection);
         let selection_fg = editor_fg;
 
+        let current_line_bg = self.theme.editor.current_line.map(Self::to_ct_color).unwrap_or(editor_bg);
+
         if word_wrap {
             // Word Wrap rendering
             let mut rendered_rows = 0;
             let mut logical_line_idx = buffer.scroll_row;
             let mut vrow_offset = buffer.scroll_vrow;
 
+            let cursor_line = buffer.rope.char_to_line(buffer.cursor);
+
             while rendered_rows < eh && logical_line_idx < buffer.line_count() {
                 let wraps = buffer.wrap_line(logical_line_idx, ew as usize, tab_size);
                 let line_start_char = buffer.rope.line_to_char(logical_line_idx);
                 let tokens = buffer.highlight_line(logical_line_idx);
 
+                let is_current_line = logical_line_idx == cursor_line && self.focus == Focus::Editor;
+
                 for (v_idx, range) in wraps.iter().enumerate().skip(vrow_offset) {
                     if rendered_rows >= eh { break; }
                     let ry = ey + rendered_rows;
+
+                    let line_bg = if is_current_line { current_line_bg } else { editor_bg };
 
                     // Render gutter for the FIRST visual line of each logical line
                     if gw > 0 {
@@ -2371,7 +2461,7 @@ impl App {
                         };
 
                         let rx = ex + visual_x;
-                        let mut bg = editor_bg;
+                        let mut bg = line_bg;
                         let mut fg = editor_fg;
 
                         // Syntax highlighting
@@ -2409,24 +2499,17 @@ impl App {
                         }
 
                         if c == '\t' {
-                            for dx in 0..char_w {
-                                if visual_x + dx < ew {
-                                    self.renderer.set_cell(ex + visual_x + dx, ry, Cell { ch: ' ', bg, fg, ..Default::default() });
-                                }
-                            }
+                            self.renderer.set_cell(ex + visual_x, ry, Cell { ch: ' ', bg, fg, width: char_w as u8, ..Default::default() });
                         } else if c != '\n' && c != '\r' {
-                            self.renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, ..Default::default() });
-                            for dx in 1..char_w {
-                                if visual_x + dx < ew {
-                                    self.renderer.set_cell(ex + visual_x + dx, ry, Cell { ch: ' ', bg, fg, ..Default::default() });
-                                }
-                            }
+                            self.renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, width: char_w as u8, ..Default::default() });
                         } else {
                             // End of logical line, might show cursor/selection
                             if char_idx == buffer.cursor && self.focus == Focus::Editor {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
-                            } else if bg != editor_bg {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, ..Default::default() });
+                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, width: 1, ..Default::default() });
+                            } else if bg != line_bg {
+                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, width: 1, ..Default::default() });
+                            } else if is_current_line {
+                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: line_bg, fg, width: 1, ..Default::default() });
                             }
                         }
                         visual_x += char_w;
@@ -2439,12 +2522,13 @@ impl App {
                          let ends_with_newline = line_slice.len_chars() > 0 && (line_slice.char(line_slice.len_chars()-1) == '\n' || line_slice.char(line_slice.len_chars()-1) == '\r');
                          if !ends_with_newline && buffer.cursor == last_char_idx && visual_x < ew {
                              self.renderer.set_cell(ex + visual_x, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
+                             visual_x += 1;
                          }
                     }
 
                     // Clear rest of row
                     for dx in visual_x..ew {
-                        self.renderer.set_cell(ex + dx, ry, Cell { ch: ' ', bg: editor_bg, ..Default::default() });
+                        self.renderer.set_cell(ex + dx, ry, Cell { ch: ' ', bg: line_bg, fg: editor_fg, ..Default::default() });
                     }
 
                     rendered_rows += 1;
@@ -2484,6 +2568,7 @@ impl App {
             }
 
             // Render editor area
+            let cursor_line = buffer.rope.char_to_line(buffer.cursor);
             for dy in 0..eh {
                 let line_idx = buffer.scroll_row + dy as usize;
                 if line_idx >= buffer.line_count() {
@@ -2492,6 +2577,9 @@ impl App {
                     }
                     continue;
                 }
+
+                let is_current_line = line_idx == cursor_line && self.focus == Focus::Editor;
+                let line_bg = if is_current_line { current_line_bg } else { editor_bg };
 
                 let tokens = buffer.highlight_line(line_idx);
                 let line = buffer.line(line_idx);
@@ -2516,7 +2604,7 @@ impl App {
                     if visual_x + char_w > buffer.scroll_col as u16 {
                         let rx = ex + (visual_x.saturating_sub(buffer.scroll_col as u16));
                         let ry = ey + dy;
-                        let mut bg = editor_bg;
+                        let mut bg = line_bg;
                         let mut fg = editor_fg;
 
                         // Syntax highlighting
@@ -2557,22 +2645,20 @@ impl App {
                             for dx in 0..char_w {
                                 let vx = visual_x + dx;
                                 if vx >= buffer.scroll_col as u16 && vx < buffer.scroll_col as u16 + ew {
-                                    self.renderer.set_cell(ex + (vx - buffer.scroll_col as u16), ry, Cell { ch: ' ', bg, fg, ..Default::default() });
+                                    self.renderer.set_cell(ex + (vx - buffer.scroll_col as u16), ry, Cell { ch: ' ', bg, fg, width: 1, ..Default::default() });
                                 }
                             }
                         } else if c != '\n' && c != '\r' {
-                            self.renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, ..Default::default() });
-                            for dx in 1..char_w {
-                                let vx = visual_x + dx;
-                                if vx >= buffer.scroll_col as u16 && vx < buffer.scroll_col as u16 + ew {
-                                    self.renderer.set_cell(ex + (vx - buffer.scroll_col as u16), ry, Cell { ch: ' ', bg, fg, ..Default::default() });
-                                }
-                            }
+                            let rx = ex + (visual_x.saturating_sub(buffer.scroll_col as u16));
+                            let ry = ey + dy;
+                            self.renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, width: char_w as u8, ..Default::default() });
                         } else {
                             if char_idx == buffer.cursor && self.focus == Focus::Editor {
                                 self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
-                            } else if bg != editor_bg {
+                            } else if bg != line_bg {
                                 self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, ..Default::default() });
+                            } else if is_current_line {
+                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: line_bg, fg, ..Default::default() });
                             }
                         }
                     }
@@ -2587,12 +2673,14 @@ impl App {
                      if !ends_with_newline && buffer.cursor == last_char_idx {
                          if visual_x >= buffer.scroll_col as u16 && visual_x < buffer.scroll_col as u16 + ew {
                              self.renderer.set_cell(ex + (visual_x - buffer.scroll_col as u16), ey + dy, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
+                             visual_x += 1;
                          }
                      }
                 }
                 for dx in (visual_x.saturating_sub(buffer.scroll_col as u16))..ew {
-                    self.renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: editor_bg, ..Default::default() });
+                    self.renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: line_bg, fg: editor_fg, ..Default::default() });
                 }
+
             }
         }
     }
@@ -2718,18 +2806,22 @@ impl App {
         for c in left_text.chars() {
             let width = c.width().unwrap_or(0) as u16;
             if cur_x + width <= x + w {
-                self.renderer.set_cell(cur_x, y, Cell { ch: c, bg, fg, ..Default::default() });
+                self.renderer.set_cell(cur_x, y, Cell { ch: c, bg, fg, width: width as u8, ..Default::default() });
                 cur_x += width;
             }
         }
 
         // Render right (right-aligned)
-        let right_width = full_right_text.chars().count() as u16;
-        let mut cur_rx = x + w.saturating_sub(right_width);
+        let mut right_visual_width = 0;
+        for c in full_right_text.chars() {
+            right_visual_width += c.width().unwrap_or(0) as u16;
+        }
+
+        let mut cur_rx = x + w.saturating_sub(right_visual_width);
         for c in full_right_text.chars() {
             let width = c.width().unwrap_or(0) as u16;
             if cur_rx >= x && cur_rx + width <= x + w {
-                self.renderer.set_cell(cur_rx, y, Cell { ch: c, bg, fg, ..Default::default() });
+                self.renderer.set_cell(cur_rx, y, Cell { ch: c, bg, fg, width: width as u8, ..Default::default() });
             }
             cur_rx += width;
         }

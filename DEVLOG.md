@@ -1,7 +1,24 @@
 # led Devlog
 
-## 2026-05-08
+## 2026-05-10
 
+### GUI Rendering & Documentation (GUI)
+- **GUI Visibility**: Applied robust rendering fixes to `EditorView`. Text chunks now use `h_full` and `items_center` within a fixed-height flex-row to ensure vertical visibility. Explicitly set `font_family("Menlo")` for consistent monospace rendering.
+- **Horizontal Scrolling**: Refactored `render_line` to use an absolute positioned wrapper for the content area, fixing horizontal scroll offset application.
+- **Documentation**: Updated `app_specs.md` with detailed GUI rendering implementation requirements and refreshed `app_todo.md`.
+    - **GUI**: Updated `bounds_for_range` and `render_line` to use visual column calculations (via `unicode-width`) instead of raw character indices. This ensures the IME candidate window appears at the correct cursor position for CJK text.
+    - **TUI**: Added hardware cursor movement to the logical cursor position after each render pass, allowing terminal emulators to properly position the IME candidate window.
+
+### GUI Bug Fixes & UX Improvements
+- **GUI Re-entrancy Crash Fix**: Fixed a `panic_already_borrowed` crash caused by synchronous file dialogs blocking the GPUI event loop. Replaced `rfd` synchronous calls with `AsyncFileDialog` and `cx.spawn` in both `app.rs` and `window_view.rs`.
+- **Japanese Inline IME Support**: Implemented `marked_text_range` in `EditorView` and refined composition handling to support native inline input on macOS.
+- **Color Consistency**: Unified `led_color_to_gpui` across all widgets to ensure alpha is explicitly set to 1.0, avoiding accidental transparency issues. Replaced hardcoded colors in `FindPanel` with theme-aware colors.
+- **Standard Shortcuts**: Added missing macOS shortcuts (`Cmd+C`, `Cmd+V`, `Cmd+X`, `Cmd+Shift+Z`) to ensure full platform parity and resolve non-functional shortcut reports.
+- **App Lifecycle & Menu State**: Moved action handlers for `New`, `Open`, `About`, and `Quit` to the application level. This ensures the menu remains enabled even when all windows are closed, and allows reopening the app via the menu.
+- **Improved Dialogs**: Updated `WindowView` to ensure `About` dialog can be triggered globally and improved background dimming for modal dialogs.
+
+## 2026-05-08
+...
 ### Completed Phase 13: led-gui — gpui Setup & Window Skeleton
 - Pinned `gpui` to commit `6766514`.
 - Implemented `led-gui` entry point and main application loop.

@@ -46,6 +46,7 @@ gui:
 	@mkdir -p $(DIST_DIR)/led.app/Contents/MacOS
 	@mkdir -p $(DIST_DIR)/led.app/Contents/Resources
 	@cp target/release/$(LED_GUI_BIN) $(DIST_DIR)/led.app/Contents/MacOS/$(LED_GUI_BIN)
+	@cp assets/icons/led.icns $(DIST_DIR)/led.app/Contents/Resources/led.icns
 	@echo '<?xml version="1.0" encoding="UTF-8"?>' > $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '<plist version="1.0">' >> $(DIST_DIR)/led.app/Contents/Info.plist
@@ -60,10 +61,13 @@ gui:
 	@echo '    <string>APPL</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <key>CFBundleShortVersionString</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <string>0.1.0</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <key>CFBundleIconFile</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+	@echo '    <string>led.icns</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <key>LSMinimumSystemVersion</key>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '    <string>10.15.7</string>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '</dict>' >> $(DIST_DIR)/led.app/Contents/Info.plist
 	@echo '</plist>' >> $(DIST_DIR)/led.app/Contents/Info.plist
+
 	@echo "Built $(DIST_DIR)/led.app"
 
 clean:

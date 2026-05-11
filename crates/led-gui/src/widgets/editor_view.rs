@@ -1,27 +1,31 @@
 use gpui::*;
 use crate::workspace::Workspace;
 use led_core::syntax::TokenType;
-use led_core::theme::{Color as LedColor, Theme};
+use led_core::theme::{Theme};
+use unicode_width::UnicodeWidthChar;
+use crate::widgets::led_color_to_gpui;
 
 pub struct EditorView {
-    workspace: Entity<Workspace>,
-    focus_handle: FocusHandle,
+    pub workspace: Entity<Workspace>,
+    pub focus_handle: FocusHandle,
     last_click_at: Option<std::time::Instant>,
     click_count: usize,
+    composition_text: Option<String>,
 }
 
 impl EditorView {
     pub fn new(workspace: Entity<Workspace>, cx: &mut Context<Self>) -> Self {
+        cx.observe(&workspace, |_, _, cx| {
+            cx.notify();
+        }).detach();
+        
         Self {
             workspace,
             focus_handle: cx.focus_handle(),
             last_click_at: None,
             click_count: 0,
+            composition_text: None,
         }
-    }
-
-    fn led_color_to_gpui(&self, color: LedColor) -> Rgba {
-        rgb((color.0 as u32) << 16 | (color.1 as u32) << 8 | (color.2 as u32))
     }
 
     fn token_color(&self, token_type: TokenType, theme: &Theme) -> Rgba {
@@ -38,14 +42,16 @@ impl EditorView {
             TokenType::Attribute => theme.syntax.attribute,
             TokenType::Error => theme.syntax.error,
         };
-        self.led_color_to_gpui(color.unwrap_or(theme.editor.foreground))
+        led_color_to_gpui(color.unwrap_or(theme.editor.foreground))
     }
 
     fn handle_key_down(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let key = &event.keystroke.key;
         let shift = event.keystroke.modifiers.shift;
+        let _control = event.keystroke.modifiers.control;
+        let _cmd = event.keystroke.modifiers.platform;
 
-        self.workspace.update(cx, |w, _| {
+        self.workspace.update(cx, |w, cx| {
             let editor = w.active_editor_mut();
             match key.as_str() {
                 "up" => editor.move_cursor_up(shift),
@@ -67,16 +73,10 @@ impl EditorView {
                     }
                     editor.insert(editor.cursor, "\n");
                 }
-                k if k.len() == 1 => {
-                    if let Some(range) = editor.selection.clone() {
-                        editor.delete(range);
-                    }
-                    editor.insert(editor.cursor, k);
-                }
                 _ => {}
             }
+            cx.notify();
         });
-        cx.notify();
     }
 
     fn mouse_pos_to_char_pos(&self, position: Point<Pixels>, cx: &mut Context<Self>) -> usize {
@@ -84,8 +84,8 @@ impl EditorView {
         let editor = workspace.active_editor();
         
         let line_height = px(20.0);
-        let gutter_width = px(50.0);
-        let char_width = px(8.4); // Rough estimate for Menlo 14pt
+        let gutter_width = if workspace.config.line_numbers { px(50.0) } else { px(0.0) };
+        let char_width = px(8.4); // Rough estimate for system monospace 14pt
 
         let relative_y = position.y - px(32.0) - px(32.0); // Offset by menu and tab bar
         let line_idx = (relative_y / line_height).floor() as i32 + editor.scroll_row as i32;
@@ -113,10 +113,11 @@ impl EditorView {
         self.last_click_at = Some(now);
 
         let char_pos = self.mouse_pos_to_char_pos(event.position, cx);
-        let gutter_width = px(50.0);
+        let workspace_read = self.workspace.read(cx);
+        let gutter_width = if workspace_read.config.line_numbers { px(50.0) } else { px(0.0) };
         let is_gutter_click = event.position.x < gutter_width;
 
-        self.workspace.update(cx, |w, _| {
+        self.workspace.update(cx, |w, cx| {
             let editor = w.active_editor_mut();
             if is_gutter_click {
                 let (line, _) = editor.char_to_line_col(char_pos);
@@ -145,25 +146,25 @@ impl EditorView {
                     }
                 }
             }
+            cx.notify();
         });
-        cx.notify();
     }
 
     fn handle_mouse_move(&mut self, event: &MouseMoveEvent, _window: &mut Window, cx: &mut Context<Self>) {
         if event.pressed_button.is_some() {
             let char_pos = self.mouse_pos_to_char_pos(event.position, cx);
-            self.workspace.update(cx, |w, _| {
+            self.workspace.update(cx, |w, cx| {
                 let editor = w.active_editor_mut();
                 editor.cursor = char_pos;
                 editor.ensure_selection();
                 editor.update_selection();
+                cx.notify();
             });
-            cx.notify();
         }
     }
 
     fn handle_scroll(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        self.workspace.update(cx, |w, _| {
+        self.workspace.update(cx, |w, cx| {
             let editor = w.active_editor_mut();
             let delta = event.delta.pixel_delta(px(20.0));
             
@@ -186,8 +187,115 @@ impl EditorView {
                     editor.scroll_col += (-cols) as usize;
                 }
             }
+            cx.notify();
         });
+    }
+}
+
+impl EntityInputHandler for EditorView {
+    fn text_for_range(&mut self, range: std::ops::Range<usize>, _actual_range: &mut Option<std::ops::Range<usize>>, _window: &mut Window, cx: &mut Context<Self>) -> Option<String> {
+        let workspace = self.workspace.read(cx);
+        let editor = workspace.active_editor();
+        if range.end <= editor.rope.len_chars() {
+            Some(editor.rope.slice(range).to_string())
+        } else {
+            None
+        }
+    }
+
+    fn selected_text_range(&mut self, _ignore_auto_selection: bool, _window: &mut Window, cx: &mut Context<Self>) -> Option<UTF16Selection> {
+        let workspace = self.workspace.read(cx);
+        let editor = workspace.active_editor();
+        let range = if let Some(ref r) = editor.selection {
+            r.start..r.end
+        } else {
+            editor.cursor..editor.cursor
+        };
+        Some(UTF16Selection { range, reversed: false })
+    }
+
+    fn marked_text_range(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<std::ops::Range<usize>> {
+        if self.composition_text.is_some() {
+            let workspace = self.workspace.read(cx);
+            let editor = workspace.active_editor();
+            Some(editor.cursor..editor.cursor + self.composition_text.as_ref().map(|t| t.chars().count()).unwrap_or(0))
+        } else {
+            None
+        }
+    }
+
+    fn replace_text_in_range(&mut self, range: Option<std::ops::Range<usize>>, text: &str, _window: &mut Window, cx: &mut Context<Self>) {
+        self.workspace.update(cx, |w, cx| {
+            let editor = w.active_editor_mut();
+            let range = range.or(editor.selection.clone()).unwrap_or(editor.cursor..editor.cursor);
+            editor.delete(range.clone());
+            editor.insert(range.start, text);
+            editor.cursor = range.start + text.chars().count();
+            editor.selection = None;
+            cx.notify();
+        });
+        self.composition_text = None;
         cx.notify();
+    }
+
+    fn replace_and_mark_text_in_range(&mut self, range: Option<std::ops::Range<usize>>, text: &str, _new_selected_range: Option<std::ops::Range<usize>>, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(range) = range {
+             self.workspace.update(cx, |w, cx| {
+                let editor = w.active_editor_mut();
+                editor.delete(range);
+                cx.notify();
+            });
+        }
+        self.composition_text = if text.is_empty() { None } else { Some(text.to_string()) };
+        cx.notify();
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(text) = self.composition_text.take() {
+            self.workspace.update(cx, |w, _| {
+                let editor = w.active_editor_mut();
+                if let Some(range) = editor.selection.clone() {
+                    editor.delete(range);
+                }
+                editor.insert(editor.cursor, &text);
+                editor.cursor += text.chars().count();
+            });
+        }
+        cx.notify();
+    }
+
+    fn bounds_for_range(&mut self, _range: std::ops::Range<usize>, element_bounds: Bounds<Pixels>, _window: &mut Window, cx: &mut Context<Self>) -> Option<Bounds<Pixels>> {
+        let workspace = self.workspace.read(cx);
+        let editor = workspace.active_editor();
+        let (line, col) = editor.char_to_line_col(editor.cursor);
+        
+        let line_height = px(20.0);
+        let char_width = px(8.4);
+        let gutter_width = if workspace.config.line_numbers { px(50.0) } else { px(0.0) };
+        
+        let mut visual_col = 0;
+        let line_slice = editor.rope.line(line);
+        let tab_size = workspace.config.tab_size as usize;
+        for (i, c) in line_slice.chars().enumerate() {
+            if i >= col { break; }
+            if c == '\t' {
+                visual_col += tab_size - (visual_col % tab_size);
+            } else {
+                visual_col += c.width().unwrap_or(0);
+            }
+        }
+
+        let x = element_bounds.origin.x + gutter_width + px((visual_col as f32 - editor.scroll_col as f32) * 8.4);
+        let y = element_bounds.origin.y + px((line as f32 - editor.scroll_row as f32) * 20.0);
+        
+        Some(Bounds {
+            origin: Point::new(x, y),
+            size: size(char_width, line_height),
+        })
+    }
+
+    fn character_index_for_point(&mut self, _point: Point<Pixels>, _window: &mut Window, _cx: &mut Context<Self>) -> Option<usize> {
+        None
     }
 }
 
@@ -195,6 +303,9 @@ impl Render for EditorView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let workspace = self.workspace.read(cx);
         let theme = &workspace.theme;
+
+        let focus_handle = self.focus_handle.clone();
+        let entity = cx.entity().clone();
 
         div()
             .track_focus(&self.focus_handle)
@@ -213,15 +324,34 @@ impl Render for EditorView {
             }))
             .w_full()
             .h_full()
-            .bg(self.led_color_to_gpui(theme.editor.background))
-            .text_color(self.led_color_to_gpui(theme.editor.foreground))
-            .font_family("Menlo")
+            .relative()
+            .bg(led_color_to_gpui(theme.editor.background))
+            .text_color(led_color_to_gpui(theme.editor.foreground))
             .text_size(px(14.0))
-            .overflow_hidden()
+            .line_height(px(22.0))
+            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+            .child(
+                canvas(
+                    move |_bounds, _window, _cx| {
+                        ()
+                    },
+                    move |bounds, (), window, cx| {
+                        if focus_handle.is_focused(window) {
+                            window.handle_input(&focus_handle, ElementInputHandler::new(bounds, entity.clone()), cx);
+                        }
+                    }
+                )
+                .absolute()
+                .top_0()
+                .left_0()
+                .w_full()
+                .h_full()
+            )
             .child(
                 div()
-                    .flex()
-                    .flex_col()
+                    .w_full()
+                    .h_full()
+                    .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
                     .child(self.render_lines(workspace))
             )
     }
@@ -236,6 +366,9 @@ impl EditorView {
         let word_wrap = false; // Placeholder
 
         div()
+            .w_full()
+            .h_full()
+            .flex()
             .flex_col()
             .children(
                 (scroll_row..line_count.min(scroll_row + 100)).map(|idx| {
@@ -254,27 +387,36 @@ impl EditorView {
         let line = editor.rope.line(line_idx);
         let line_str = line.to_string();
 
-        // Assume char_width is 8.4, we need to know the window width
-        // For simplicity, let's hardcode a width or use a reasonable default
         let wraps = editor.wrap_line(line_idx, 80, 4); 
 
         div()
+            .w_full()
             .flex_col()
             .children(wraps.into_iter().enumerate().map(|(vidx, range)| {
                 let chunk = &line_str[range.start..range.end];
                 div()
+                    .w_full()
                     .flex()
-                    .h(px(20.0))
+                    .h(px(22.0))
+                    .text_size(px(14.0))
                     .child(
                         div()
                             .w(px(50.0))
+                            .h_full()
+                            .flex()
+                            .items_center()
                             .justify_end()
                             .px_2()
-                            .text_color(self.led_color_to_gpui(theme.editor.line_number))
+                            .text_color(led_color_to_gpui(theme.editor.line_number))
+                            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
                             .child(if vidx == 0 { (line_idx + 1).to_string() } else { "".to_string() })
                     )
                     .child(
                         div()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
                             .child(chunk.to_string())
                     )
             }))
@@ -285,107 +427,151 @@ impl EditorView {
         let theme = &workspace.theme;
 
         let line = editor.rope.line(line_idx);
-        let line_str = line.to_string();
+        let mut line_str = line.to_string();
+        // Strip line endings for rendering
+        if line_str.ends_with('\n') {
+            line_str.pop();
+            if line_str.ends_with('\r') {
+                line_str.pop();
+            }
+        } else if line_str.ends_with('\r') {
+            line_str.pop();
+        }
         
         let (cursor_line, cursor_col) = editor.char_to_line_col(editor.cursor);
         let is_cursor_line = line_idx == cursor_line;
 
-        let bg_hsla: Hsla = hsla(0., 0., 0., 0.);
+        let editor_bg = led_color_to_gpui(theme.editor.background);
         let bg: Rgba = if is_cursor_line {
-            theme.editor.current_line.map(|c| self.led_color_to_gpui(c)).unwrap_or(bg_hsla.into())
+            theme.editor.current_line.map(|c| led_color_to_gpui(c)).unwrap_or(editor_bg)
         } else {
-            bg_hsla.into()
+            editor_bg
         };
 
-        let gutter_width = px(50.0);
+        let gutter_width = if workspace.config.line_numbers { px(50.0) } else { px(0.0) };
+
+        // Calculate visual column for cursor
+        let mut visual_cursor_col = 0;
+        let tab_size = workspace.config.tab_size as usize;
+        for (i, c) in line.chars().enumerate() {
+            if i >= cursor_col { break; }
+            if c == '\t' {
+                visual_cursor_col += tab_size - (visual_cursor_col % tab_size);
+            } else {
+                visual_cursor_col += c.width().unwrap_or(0);
+            }
+        }
+
+        // Measure average character width for scrolling/cursor
+        let char_width = 8.4; // Default fallback
 
         div()
+            .w_full()
             .flex()
-            .h(px(20.0))
+            .h(px(22.0))
             .bg(bg)
+            .text_color(led_color_to_gpui(theme.editor.foreground))
             .child(
                 div()
+                    .flex_none()
                     .w(gutter_width)
+                    .h_full()
+                    .flex()
+                    .items_center()
                     .justify_end()
                     .px_2()
-                    .text_color(self.led_color_to_gpui(theme.editor.line_number))
-                    .child((line_idx + 1).to_string())
+                    .text_color(led_color_to_gpui(theme.editor.line_number))
+                    .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+                    .child(if workspace.config.line_numbers { (line_idx + 1).to_string() } else { "".to_string() })
             )
             .child(
                 div()
-                    .flex()
+                    .flex_grow()
                     .h_full()
                     .relative()
-                    .ml(px(-(editor.scroll_col as f32 * 8.4)))
-                    .children(self.render_line_content(line_idx, &line_str, workspace))
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left(px(-(editor.scroll_col as f32 * char_width)))
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .children(self.render_line_content(line_idx, &line_str, workspace, is_cursor_line))
+                    )
                     .child(if is_cursor_line {
+                        let comp_x = visual_cursor_col as f32 * char_width;
+                        let mut comp_visual_width = 0;
+                        if let Some(ref comp) = self.composition_text {
+                            for c in comp.chars() {
+                                comp_visual_width += c.width().unwrap_or(0);
+                            }
+                        }
+                        let comp_w = comp_visual_width as f32 * char_width;
+                        
                         // Render cursor
                         div()
                             .absolute()
                             .top_0()
-                            .left(px(cursor_col as f32 * 8.4))
+                            .left(px(comp_x + comp_w - (editor.scroll_col as f32 * char_width)))
                             .w(px(2.0))
                             .h_full()
-                            .bg(self.led_color_to_gpui(theme.editor.cursor))
+                            .bg(led_color_to_gpui(theme.editor.cursor))
                     } else {
                         div()
                     })
             )
     }
 
-    fn render_line_content(&self, line_idx: usize, line_str: &str, workspace: &Workspace) -> Vec<impl IntoElement> {
+    fn render_line_content(&self, line_idx: usize, line_str: &str, workspace: &Workspace, is_cursor_line: bool) -> Vec<AnyElement> {
         let editor = workspace.active_editor();
         let theme = &workspace.theme;
 
         let selection = editor.selection.clone();
         let line_start_char = editor.rope.line_to_char(line_idx);
+        let (_, cursor_col) = editor.char_to_line_col(editor.cursor);
 
         let mut elements = Vec::new();
 
         // Helper to render a chunk of text with potential selection highlight
         let mut render_chunk = |text: &str, start_char: usize, token_color: Option<Rgba>| {
+            if text.is_empty() { return; }
             let chunk_chars: Vec<char> = text.chars().collect();
             let chunk_len = chunk_chars.len();
             
-            if let Some(ref sel) = selection {
-                let sel_start = if sel.start > start_char { sel.start - start_char } else { 0 };
-                let sel_end = if sel.end > start_char { sel.end - start_char } else { 0 };
-
-                if sel_start < chunk_len && sel_end > 0 {
-                    let highlight_start = sel_start;
-                    let highlight_end = sel_end.min(chunk_len);
-
-                    if highlight_start > 0 {
+            // If this is the cursor line and we have composition text, 
+            // we might need to split this chunk to insert the composition text
+            if is_cursor_line && self.composition_text.is_some() {
+                let chunk_start_col = start_char - line_start_char;
+                if cursor_col >= chunk_start_col && cursor_col < chunk_start_col + chunk_len {
+                    let split_idx = cursor_col - chunk_start_col;
+                    let part1 = chunk_chars[..split_idx].iter().collect::<String>();
+                    let part2 = chunk_chars[split_idx..].iter().collect::<String>();
+                    
+                    self.render_chunk_internal(&part1, start_char, token_color, selection.clone(), theme, &mut elements);
+                    
+                    if let Some(ref comp) = self.composition_text {
                         elements.push(
                             div()
-                                .text_color(token_color.unwrap_or(self.led_color_to_gpui(theme.editor.foreground)))
-                                .child(chunk_chars[..highlight_start].iter().collect::<String>())
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .text_color(led_color_to_gpui(theme.editor.foreground))
+                                .bg(led_color_to_gpui(theme.editor.selection))
+                                .border_b_1()
+                                .border_color(led_color_to_gpui(theme.editor.foreground))
+                                .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+                                .child(comp.clone())
+                                .into_any_element()
                         );
                     }
-
-                    elements.push(
-                        div()
-                            .bg(self.led_color_to_gpui(theme.editor.selection))
-                            .text_color(token_color.unwrap_or(self.led_color_to_gpui(theme.editor.foreground)))
-                            .child(chunk_chars[highlight_start..highlight_end].iter().collect::<String>())
-                    );
-
-                    if highlight_end < chunk_len {
-                        elements.push(
-                            div()
-                                .text_color(token_color.unwrap_or(self.led_color_to_gpui(theme.editor.foreground)))
-                                .child(chunk_chars[highlight_end..].iter().collect::<String>())
-                        );
-                    }
+                    
+                    self.render_chunk_internal(&part2, start_char + split_idx, token_color, selection.clone(), theme, &mut elements);
                     return;
                 }
             }
 
-            elements.push(
-                div()
-                    .text_color(token_color.unwrap_or(self.led_color_to_gpui(theme.editor.foreground)))
-                    .child(text.to_string())
-            );
+            self.render_chunk_internal(text, start_char, token_color, selection.clone(), theme, &mut elements);
         };
 
         if let Some(Some(tokens)) = editor.line_tokens.get(line_idx) {
@@ -397,13 +583,13 @@ impl EditorView {
                     render_chunk(text, start_char, None);
                 }
                 let text = &line_str[token.byte_range.clone()];
-                let start_char = line_start_char + line_str[..token.byte_range.start].chars().count();
+                let start_char = start_char_from_byte_offset(&line_str, token.byte_range.start, line_start_char);
                 render_chunk(text, start_char, Some(self.token_color(token.token, theme)));
                 last_offset = token.byte_range.end;
             }
             if last_offset < line_str.len() {
                 let text = &line_str[last_offset..];
-                let start_char = line_start_char + line_str[..last_offset].chars().count();
+                let start_char = start_char_from_byte_offset(&line_str, last_offset, line_start_char);
                 render_chunk(text, start_char, None);
             }
         } else {
@@ -411,4 +597,76 @@ impl EditorView {
         }
         elements
     }
+
+    fn render_chunk_internal(&self, text: &str, start_char: usize, token_color: Option<Rgba>, selection: Option<std::ops::Range<usize>>, theme: &Theme, elements: &mut Vec<AnyElement>) {
+        if text.is_empty() { return; }
+        let chunk_chars: Vec<char> = text.chars().collect();
+        let chunk_len = chunk_chars.len();
+        
+        let text_color = token_color.unwrap_or(led_color_to_gpui(theme.editor.foreground));
+
+        if let Some(ref sel) = selection {
+            let sel_start = if sel.start > start_char { sel.start - start_char } else { 0 };
+            let sel_end = if sel.end > start_char { sel.end - start_char } else { 0 };
+
+            if sel_start < chunk_len && sel_end > 0 {
+                let highlight_start = sel_start;
+                let highlight_end = sel_end.min(chunk_len);
+
+                if highlight_start > 0 {
+                    elements.push(
+                        div()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .text_color(text_color)
+                            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+                            .child(chunk_chars[..highlight_start].iter().collect::<String>())
+                            .into_any_element()
+                    );
+                }
+
+                elements.push(
+                    div()
+                        .h_full()
+                        .flex()
+                        .items_center()
+                        .bg(led_color_to_gpui(theme.editor.selection))
+                        .text_color(text_color)
+                        .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+                        .child(chunk_chars[highlight_start..highlight_end].iter().collect::<String>())
+                        .into_any_element()
+                );
+
+                if highlight_end < chunk_len {
+                    elements.push(
+                        div()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .text_color(text_color)
+                            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+                            .child(chunk_chars[highlight_end..].iter().collect::<String>())
+                            .into_any_element()
+                    );
+                }
+                return;
+            }
+        }
+
+        elements.push(
+            div()
+                .h_full()
+                .flex()
+                .items_center()
+                .text_color(text_color)
+                .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+                .child(text.to_string())
+                .into_any_element()
+        );
+    }
+}
+
+fn start_char_from_byte_offset(s: &str, byte_offset: usize, line_start_char: usize) -> usize {
+    line_start_char + s[..byte_offset].chars().count()
 }

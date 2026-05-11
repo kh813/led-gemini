@@ -100,4 +100,11 @@ impl Layout {
     pub fn status_bounds(&self) -> (u16, u16, u16, u16) {
         (0, self.height.saturating_sub(self.status_height), self.width, self.status_height)
     }
+
+    pub fn dialog_bounds(&self, dims: (u16, u16)) -> (u16, u16, u16, u16) {
+        let (dw, dh) = dims;
+        let x = self.width.saturating_sub(dw) / 2;
+        let y = self.height.saturating_sub(dh) / 2;
+        (x, y, dw, dh)
+    }
 }

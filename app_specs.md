@@ -761,12 +761,20 @@ In-window menu item clicked (Windows/Linux)
     → same handler as above
 ```
 
-#### i18n and the Native Menu Bar
+#### File Drag & Drop (GUI Only)
 
-On macOS, `set_menus()` must be called with already-localized strings (NSMenu does not support dynamic label updates easily). Therefore:
-- `led-core::i18n` is initialized **before** `set_menus()` is called
-- If the user changes `language` in config and restarts, the native menu bar reflects the new language on next launch
-- Runtime language switching (without restart) is **not supported** for the native macOS menu bar; this is an accepted limitation
+- **Window Drop**: Accept file drop events on the main window at any time.
+- **App Icon Drop**: If supported by the platform, handle files dropped onto the application icon.
+- **Multiple Files**: Support dropping multiple files simultaneously.
+- **Tab Logic**:
+  - For each dropped file:
+    - If the file is already open in an existing tab, do not create a new tab; simply switch focus to the existing tab.
+    - If the file is not open, create a new tab for it.
+  - After processing all dropped files, the last file in the list (or the single dropped file) should become the active tab.
+- **Validation**:
+  - Only process files that can be read as text.
+  - Ignore non-file drops (e.g., text snippets, images) or show a non-intrusive error message if a file cannot be opened.
+  - Ensure the drag-and-drop operation does not interrupt any ongoing modal dialogs unless the dialog is dismissed.
 
 ### Architecture
 
@@ -787,6 +795,15 @@ led-gui/src/
 
 `window_view.rs` is responsible for composing the layout. On macOS, it skips `menu_bar.rs` and begins with `tab_bar.rs`. On Windows/Linux, it places `menu_bar.rs` first.
 
+#### Native GUI Rendering Implementation Details
+
+To ensure visibility and parity with the TUI version:
+- **Monospace Font**: `EditorView` MUST explicitly set a monospace font family (e.g., "Menlo", "Consolas", "Courier New") to ensure consistent character widths and height.
+- **Line Layout**: Each line is rendered as a `flex-row` div with a fixed height.
+- **Chunk Rendering**: Text is split into chunks based on syntax highlighting and selection. Each chunk is rendered in a `div` that MUST inherit the monospace font and have `h_full()` to ensure proper vertical alignment.
+- **Scrolling**: Horizontal scrolling is implemented by wrapping the content area of each line in a `relative` div and applying a horizontal offset.
+- **Transparency**: The editor background and text colors are derived directly from `led-core::theme` to maintain visual consistency.
+
 ### Feature Parity Target
 
 `led-gui` targets full feature parity with `led-tui`:
@@ -796,6 +813,8 @@ led-gui/src/
 - All config keys (same `led-core::config` loader)
 - File drag & drop (GUI-only addition)
 - Platform-appropriate menu bar (native on macOS, in-window on Windows/Linux)
+- Native shortcuts: `Cmd+...` on macOS, `Ctrl+...` on Windows/Linux for standard actions (New, Open, Save, Quit, etc.)
+- Japanese Inline Input (IME): full support for inline conversion and composition
 - Native clipboard (gpui's built-in, no OSC 52 needed)
 
 ### What is NOT shared with led-tui

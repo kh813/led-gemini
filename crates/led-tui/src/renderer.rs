@@ -12,6 +12,7 @@ pub struct Cell {
     pub bg: Color,
     pub bold: bool,
     pub underline: bool,
+    pub width: u8,
 }
 
 impl Default for Cell {
@@ -22,6 +23,7 @@ impl Default for Cell {
             bg: Color::Reset,
             bold: false,
             underline: false,
+            width: 1,
         }
     }
 }
@@ -67,18 +69,22 @@ impl Renderer {
 
     pub fn present<W: Write>(&mut self, writer: &mut W) -> io::Result<()> {
         let mut last_style = ContentStyle::default();
-        let mut cursor_moved = false;
+        let mut cursor_x = 0u16;
+        let mut cursor_y = 0u16;
+        let mut force_move = true;
 
         for y in 0..self.height {
-            for x in 0..self.width {
+            let mut x = 0;
+            while x < self.width {
                 let idx = (y as usize) * (self.width as usize) + (x as usize);
                 let curr = self.curr_buffer[idx];
                 let prev = self.prev_buffer[idx];
 
-                if curr != prev {
-                    if !cursor_moved {
+                if curr != prev || force_move {
+                    if force_move || cursor_x != x || cursor_y != y {
                         writer.queue(cursor::MoveTo(x, y))?;
-                        cursor_moved = true;
+                        cursor_x = x;
+                        cursor_y = y;
                     }
 
                     let mut style = ContentStyle::default();
@@ -98,15 +104,12 @@ impl Renderer {
                     }
 
                     writer.queue(style::Print(curr.ch))?;
-                    
-                    // After printing a character, the cursor moves forward.
-                    // If the next cell also needs update, we don't need MoveTo.
-                    // But if there's a gap, we'll need MoveTo for the next changed cell.
-                } else {
-                    cursor_moved = false;
+                    cursor_x += curr.width as u16;
+                    force_move = false;
                 }
+                x += curr.width as u16;
             }
-            cursor_moved = false; // Reset for next line
+            force_move = true; // Force move at start of next line
         }
 
         self.prev_buffer.copy_from_slice(&self.curr_buffer);

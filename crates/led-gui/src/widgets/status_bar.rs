@@ -1,6 +1,6 @@
 use gpui::*;
 use crate::workspace::Workspace;
-use led_core::theme::{Color as LedColor};
+use crate::widgets::led_color_to_gpui;
 
 pub struct StatusBar {
     workspace: Entity<Workspace>,
@@ -9,10 +9,6 @@ pub struct StatusBar {
 impl StatusBar {
     pub fn new(workspace: Entity<Workspace>, _cx: &mut Context<Self>) -> Self {
         Self { workspace }
-    }
-
-    fn led_color_to_gpui(&self, color: LedColor) -> Rgba {
-        rgb((color.0 as u32) << 16 | (color.1 as u32) << 8 | (color.2 as u32))
     }
 }
 
@@ -43,32 +39,48 @@ impl Render for StatusBar {
         let syntax = editor.syntax_highlighter.as_ref().map(|h| h.def.meta.name.clone()).unwrap_or("Plain Text".to_string());
 
         div()
-            .h_6()
+            .h(px(24.0))
             .w_full()
             .flex()
             .items_center()
             .justify_between()
-            .bg(self.led_color_to_gpui(theme.ui.status_bar_bg))
-            .text_color(self.led_color_to_gpui(theme.ui.status_bar_fg))
+            .bg(led_color_to_gpui(theme.ui.status_bar_bg))
+            .text_color(led_color_to_gpui(theme.ui.status_bar_fg))
+            .text_size(px(12.0))
+            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
             .border_t_1()
-            .border_color(self.led_color_to_gpui(theme.editor.line_number))
-            .text_sm()
+            .border_color(led_color_to_gpui(theme.editor.line_number))
             .child(
                 div()
+                    .h_full()
+                    .flex()
+                    .items_center()
                     .px_2()
                     .child(format!("{}{}", file_name, modified_flag))
             )
             .child(
                 div()
-                    .px_2()
+                    .h_full()
                     .flex()
+                    .items_center()
+                    .px_2()
                     .gap_4()
-                    .child(selection_info)
-                    .child(vi_mode)
-                    .child(format!("Ln {}, Col {}", line + 1, col + 1))
-                    .child(encoding)
-                    .child(line_ending)
-                    .child(syntax)
+                    .child(
+                        div()
+                            .h_full()
+                            .flex()
+                            .items_center()
+                            .bg(gpui::rgb(0xff0000))
+                            .text_color(gpui::rgb(0xffffff))
+                            .px_1()
+                            .child("DEBUG")
+                    )
+                    .child(div().h_full().flex().items_center().child(selection_info))
+                    .child(div().h_full().flex().items_center().child(vi_mode))
+                    .child(div().h_full().flex().items_center().child(format!("Ln {}, Col {}", line + 1, col + 1)))
+                    .child(div().h_full().flex().items_center().child(encoding))
+                    .child(div().h_full().flex().items_center().child(line_ending))
+                    .child(div().h_full().flex().items_center().child(syntax))
             )
     }
 }

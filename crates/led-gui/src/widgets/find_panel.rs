@@ -167,6 +167,15 @@ impl FindPanel {
         }
         cx.notify();
     }
+
+    fn led_color_to_gpui(&self, color: led_core::theme::Color) -> Rgba {
+        Rgba {
+            r: color.0 as f32 / 255.0,
+            g: color.1 as f32 / 255.0,
+            b: color.2 as f32 / 255.0,
+            a: 1.0,
+        }
+    }
 }
 
 impl Render for FindPanel {
@@ -177,9 +186,12 @@ impl Render for FindPanel {
 
         let workspace = self.workspace.read(cx);
         let theme = &workspace.theme;
-        let bg = rgb((theme.ui.panel_bg.0 as u32) << 16 | (theme.ui.panel_bg.1 as u32) << 8 | (theme.ui.panel_bg.2 as u32));
-        let fg = rgb((theme.ui.panel_fg.0 as u32) << 16 | (theme.ui.panel_fg.1 as u32) << 8 | (theme.ui.panel_fg.2 as u32));
-        let border = rgb((theme.ui.dialog_border.0 as u32) << 16 | (theme.ui.dialog_border.1 as u32) << 8 | (theme.ui.dialog_border.2 as u32));
+        let bg = self.led_color_to_gpui(theme.ui.panel_bg);
+        let fg = self.led_color_to_gpui(theme.ui.panel_fg);
+        let border = self.led_color_to_gpui(theme.ui.dialog_border);
+        let input_bg = self.led_color_to_gpui(theme.editor.background);
+        let active_bg = self.led_color_to_gpui(theme.ui.button_active_bg);
+        let active_fg = self.led_color_to_gpui(theme.ui.button_active_fg);
 
         div()
             .w_full()
@@ -200,7 +212,7 @@ impl Render for FindPanel {
                         div()
                             .flex_grow()
                             .h_7()
-                            .bg(rgb(0x24283b)) // Darker bg for input
+                            .bg(input_bg)
                             .border_1()
                             .border_color(border)
                             .px_2()
@@ -220,7 +232,8 @@ impl Render for FindPanel {
                                         cx.notify();
                                     }))
                                     .px_1()
-                                    .bg(if self.match_case { rgb(0x3b4261) } else { bg })
+                                    .bg(if self.match_case { active_bg } else { bg })
+                                    .text_color(if self.match_case { active_fg } else { fg })
                                     .child("Aa")
                             )
                             .child(
@@ -231,7 +244,8 @@ impl Render for FindPanel {
                                         cx.notify();
                                     }))
                                     .px_1()
-                                    .bg(if self.whole_word { rgb(0x3b4261) } else { bg })
+                                    .bg(if self.whole_word { active_bg } else { bg })
+                                    .text_color(if self.whole_word { active_fg } else { fg })
                                     .child("|W|")
                             )
                             .child(
@@ -242,7 +256,8 @@ impl Render for FindPanel {
                                         cx.notify();
                                     }))
                                     .px_1()
-                                    .bg(if self.use_regex { rgb(0x3b4261) } else { bg })
+                                    .bg(if self.use_regex { active_bg } else { bg })
+                                    .text_color(if self.use_regex { active_fg } else { fg })
                                     .child(".*")
                             )
                     )
@@ -250,14 +265,16 @@ impl Render for FindPanel {
                         div()
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.handle_search_prev(window, cx)))
                             .px_2()
-                            .bg(rgb(0x3b4261))
+                            .bg(active_bg)
+                            .text_color(active_fg)
                             .child("Prev")
                     )
                     .child(
                         div()
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.handle_search_next(window, cx)))
                             .px_2()
-                            .bg(rgb(0x3b4261))
+                            .bg(active_bg)
+                            .text_color(active_fg)
                             .child("Next")
                     )
             )
@@ -271,7 +288,7 @@ impl Render for FindPanel {
                         div()
                             .flex_grow()
                             .h_7()
-                            .bg(rgb(0x24283b))
+                            .bg(input_bg)
                             .border_1()
                             .border_color(border)
                             .px_2()
@@ -283,14 +300,16 @@ impl Render for FindPanel {
                         div()
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.handle_search_replace(window, cx)))
                             .px_2()
-                            .bg(rgb(0x3b4261))
+                            .bg(active_bg)
+                            .text_color(active_fg)
                             .child("Replace")
                     )
                     .child(
                         div()
                             .on_mouse_down(MouseButton::Left, cx.listener(|this, _, window, cx| this.handle_search_replace_all(window, cx)))
                             .px_2()
-                            .bg(rgb(0x3b4261))
+                            .bg(active_bg)
+                            .text_color(active_fg)
                             .child("Replace All")
                     )
             } else {

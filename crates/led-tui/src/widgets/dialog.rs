@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::fs;
 use std::time::SystemTime;
 use chrono::{DateTime, Local};
+use unicode_width::UnicodeWidthChar;
 
 pub enum DialogResult<T> {
     Ok(T),
@@ -15,15 +16,17 @@ pub enum DialogResult<T> {
 pub trait Dialog {
     fn title(&self) -> &str;
     fn dimensions(&self) -> (u16, u16); // width, height
-    fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16);
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16);
     fn handle_key(&mut self, key: KeyEvent) -> DialogResult<Action>;
     fn handle_mouse(&mut self, mouse: MouseEvent, x: u16, y: u16, w: u16, h: u16) -> DialogResult<Action>;
     fn set_error(&mut self, _msg: String) {}
+    fn cursor_pos(&self) -> Option<(u16, u16)> { None }
 }
 
 #[derive(Debug, Clone)]
 pub enum Action {
     ConfirmPath(PathBuf),
+    ConfirmLine(usize),
     Confirm,
     Save,
     DontSave,
@@ -394,23 +397,33 @@ impl FileBrowser {
         None
     }
 
-    pub fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
+    pub fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg);
+        let active_bg = to_ct_color(theme.ui.button_active_bg);
+        let active_fg = to_ct_color(theme.ui.button_active_fg);
+
         // Render current dir
         let dir_str = self.current_dir.to_string_lossy();
-        for (i, c) in dir_str.chars().enumerate() {
-            if (i as u16) < w - 4 {
-                renderer.set_cell(x + 2 + i as u16, y + 1, Cell { ch: c, ..Default::default() });
+        let mut cur_dir_x = x + 2;
+        for c in dir_str.chars() {
+            let cw = c.width().unwrap_or(0) as u16;
+            if cur_dir_x + cw < x + w - 2 {
+                renderer.set_cell(cur_dir_x, y + 1, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, width: cw as u8, ..Default::default() });
+                cur_dir_x += cw;
+            } else {
+                break;
             }
         }
 
         // Options bar
         let hidden_text = format!("[{}] {}", if self.show_hidden { "x" } else { " " }, self.i18n_hidden);
         for (i, c) in hidden_text.chars().enumerate() {
-            renderer.set_cell(x + 2 + i as u16, y + 2, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + 2 + i as u16, y + 2, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
         }
         let enc_text = format!("[{}] {}", if self.detect_encoding { "x" } else { " " }, self.i18n_encoding);
         for (i, c) in enc_text.chars().enumerate() {
-            renderer.set_cell(x + 30 + i as u16, y + 2, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + 30 + i as u16, y + 2, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
         }
 
         // Quick-nav bar
@@ -420,7 +433,7 @@ impl FileBrowser {
         for nav in navs {
             let nav_str = format!(" {} ", nav);
             for c in nav_str.chars() {
-                renderer.set_cell(nx, ny, Cell { ch: c, bg: Color::DarkGrey, ..Default::default() });
+                renderer.set_cell(nx, ny, Cell { ch: c, bg: to_ct_color(theme.ui.status_bar_bg), fg: to_ct_color(theme.ui.status_bar_fg), ..Default::default() });
                 nx += 1;
             }
             nx += 1;
@@ -436,13 +449,13 @@ impl FileBrowser {
         let mod_head = format!("{}{}", self.i18n_modified, mod_indicator);
 
         for (i, c) in name_head.chars().enumerate() {
-            renderer.set_cell(x + 2 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + 2 + i as u16, y + 4, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, bold: true, ..Default::default() });
         }
         for (i, c) in size_head.chars().enumerate() {
-            renderer.set_cell(x + w - 25 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + w - 25 + i as u16, y + 4, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, bold: true, ..Default::default() });
         }
         for (i, c) in mod_head.chars().enumerate() {
-            renderer.set_cell(x + w - 14 + i as u16, y + 4, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + w - 14 + i as u16, y + 4, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, bold: true, ..Default::default() });
         }
 
         // Entries
@@ -457,9 +470,26 @@ impl FileBrowser {
             let idx = start_idx + i;
             if let Some(entry) = self.entries.get(idx) {
                 let iy = y + 5 + i as u16;
-                let is_selected = idx == self.selected_idx && !self.input_focused;
-                let bg = if is_selected { Color::White } else { Color::Reset };
-                let fg = if is_selected { Color::Black } else { Color::White };
+                let is_selected = idx == self.selected_idx;
+                let bg = if is_selected { 
+                    if self.input_focused {
+                        // Inactive but selected
+                        to_ct_color(theme.ui.tab_inactive_bg)
+                    } else {
+                        active_bg 
+                    }
+                } else { 
+                    dialog_bg 
+                };
+                let fg = if is_selected { 
+                    if self.input_focused {
+                        to_ct_color(theme.ui.tab_inactive_fg)
+                    } else {
+                        active_fg
+                    }
+                } else { 
+                    dialog_fg 
+                };
 
                 for dx in 1..w - 1 {
                     renderer.set_cell(x + dx, iy, Cell { ch: ' ', bg, ..Default::default() });
@@ -471,9 +501,14 @@ impl FileBrowser {
                     entry.name.clone()
                 };
 
-                for (j, c) in name.chars().enumerate() {
-                    if (j as u16) < w - 27 {
-                        renderer.set_cell(x + 2 + j as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
+                let mut cur_name_x = x + 2;
+                for (_j, c) in name.chars().enumerate() {
+                    let cw = c.width().unwrap_or(0) as u16;
+                    if (cur_name_x + cw) < x + w - 25 {
+                        renderer.set_cell(cur_name_x, iy, Cell { ch: c, bg, fg, width: cw as u8, ..Default::default() });
+                        cur_name_x += cw;
+                    } else {
+                        break;
                     }
                 }
 
@@ -518,30 +553,33 @@ impl FileBrowser {
 
         // Input field
         let iy = y + h - 2;
-        let bg = if self.input_focused { Color::White } else { Color::Reset };
-        let fg = if self.input_focused { Color::Black } else { Color::White };
+        let input_bg = if self.input_focused { active_bg } else { to_ct_color(theme.ui.panel_bg) };
+        let input_fg = if self.input_focused { active_fg } else { to_ct_color(theme.ui.panel_fg) };
         
         for (i, c) in self.i18n_filename.chars().enumerate() {
-            renderer.set_cell(x + 2 + i as u16, iy, Cell { ch: c, ..Default::default() });
+            renderer.set_cell(x + 2 + i as u16, iy, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
         }
         
         let input_x = x + 2 + self.i18n_filename.chars().count() as u16;
         let input_w = w.saturating_sub(self.i18n_filename.chars().count() as u16 + 4);
         for dx in 0..input_w {
-            renderer.set_cell(input_x + dx, iy, Cell { ch: ' ', bg, ..Default::default() });
+            renderer.set_cell(input_x + dx, iy, Cell { ch: ' ', bg: input_bg, ..Default::default() });
         }
         for (i, c) in self.input_text.chars().enumerate() {
             if (i as u16) < input_w {
-                renderer.set_cell(input_x + i as u16, iy, Cell { ch: c, bg, fg, ..Default::default() });
+                renderer.set_cell(input_x + i as u16, iy, Cell { ch: c, bg: input_bg, fg: input_fg, ..Default::default() });
             }
         }
     }
 }
 
-pub fn render_base_dialog(renderer: &mut Renderer, title: &str, x: u16, y: u16, w: u16, h: u16) {
-    let bg = Color::Reset;
-    let _fg = Color::White;
-    let border_fg = Color::White;
+fn to_ct_color(c: led_core::theme::Color) -> Color {
+    Color::Rgb { r: c.0, g: c.1, b: c.2 }
+}
+
+pub fn render_base_dialog(renderer: &mut Renderer, theme: &led_core::theme::Theme, title: &str, x: u16, y: u16, w: u16, h: u16) {
+    let bg = to_ct_color(theme.ui.dialog_bg);
+    let border_fg = to_ct_color(theme.ui.dialog_border);
 
     // Fill background
     for dy in 0..h {
@@ -598,23 +636,23 @@ impl OpenDialog {
 
 impl Dialog for OpenDialog {
     fn title(&self) -> &str {
-        "Open File"
+        &self.i18n_title
     }
 
     fn dimensions(&self) -> (u16, u16) {
         (80, 22)
     }
 
-    fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
-        render_base_dialog(renderer, self.title(), x, y, w, h);
-        self.browser.render(renderer, x, y, w, h);
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        render_base_dialog(renderer, theme, self.title(), x, y, w, h);
+        self.browser.render(renderer, theme, x, y, w, h);
 
         if let Some(ref msg) = self.error_message {
             let msg_x = x + 2;
             let msg_y = y + h - 3;
             for (i, c) in msg.chars().enumerate() {
                 if (i as u16) < w - 4 {
-                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, fg: Color::Red, ..Default::default() });
+                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, bg: to_ct_color(theme.ui.dialog_bg), fg: Color::Red, ..Default::default() });
                 }
             }
         }
@@ -639,6 +677,15 @@ impl Dialog for OpenDialog {
 
     fn set_error(&mut self, msg: String) {
         self.error_message = Some(msg);
+    }
+
+    fn cursor_pos(&self) -> Option<(u16, u16)> {
+        if self.browser.input_focused {
+            let label_len = self.browser.i18n_filename.chars().count() as u16;
+            Some((2 + label_len + self.browser.input_text.chars().count() as u16, 22 - 2))
+        } else {
+            None
+        }
     }
 }
 
@@ -673,23 +720,23 @@ impl SaveAsDialog {
 
 impl Dialog for SaveAsDialog {
     fn title(&self) -> &str {
-        "Save As..."
+        &self.i18n_title
     }
 
     fn dimensions(&self) -> (u16, u16) {
         (80, 22)
     }
 
-    fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
-        render_base_dialog(renderer, self.title(), x, y, w, h);
-        self.browser.render(renderer, x, y, w, h);
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        render_base_dialog(renderer, theme, self.title(), x, y, w, h);
+        self.browser.render(renderer, theme, x, y, w, h);
 
         if let Some(ref msg) = self.error_message {
             let msg_x = x + 2;
             let msg_y = y + h - 3;
             for (i, c) in msg.chars().enumerate() {
                 if (i as u16) < w - 4 {
-                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, fg: Color::Red, ..Default::default() });
+                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, bg: to_ct_color(theme.ui.dialog_bg), fg: Color::Red, ..Default::default() });
                 }
             }
         }
@@ -714,6 +761,15 @@ impl Dialog for SaveAsDialog {
 
     fn set_error(&mut self, msg: String) {
         self.error_message = Some(msg);
+    }
+
+    fn cursor_pos(&self) -> Option<(u16, u16)> {
+        if self.browser.input_focused {
+            let label_len = self.browser.i18n_filename.chars().count() as u16;
+            Some((2 + label_len + self.browser.input_text.chars().count() as u16, 22 - 2))
+        } else {
+            None
+        }
     }
 }
 
@@ -744,8 +800,11 @@ impl Dialog for MessageDialog {
         (40, 8)
     }
 
-    fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
-        render_base_dialog(renderer, self.title(), x, y, w, h);
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        render_base_dialog(renderer, theme, self.title(), x, y, w, h);
+
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg);
 
         use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
         let msg_w = self.message.width() as u16;
@@ -755,7 +814,7 @@ impl Dialog for MessageDialog {
         for c in self.message.chars() {
             let cw = c.width().unwrap_or(0) as u16;
             if cur_lx + cw <= x + w - 1 {
-                renderer.set_cell(cur_lx, ly, Cell { ch: c, ..Default::default() });
+                renderer.set_cell(cur_lx, ly, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
             }
             cur_lx += cw;
         }
@@ -768,8 +827,8 @@ impl Dialog for MessageDialog {
         for (i, (s, _)) in self.buttons.iter().enumerate() {
             let btn_text = format!("[ {} ]", s);
             let is_selected = i == self.selected_btn;
-            let bg = if is_selected { Color::White } else { Color::Reset };
-            let fg = if is_selected { Color::Black } else { Color::White };
+            let bg = if is_selected { to_ct_color(theme.ui.button_active_bg) } else { to_ct_color(theme.ui.panel_bg) };
+            let fg = if is_selected { to_ct_color(theme.ui.button_active_fg) } else { to_ct_color(theme.ui.panel_fg) };
 
             for c in btn_text.chars() {
                 renderer.set_cell(bx, by, Cell { ch: c, bg, fg, ..Default::default() });
@@ -781,15 +840,19 @@ impl Dialog for MessageDialog {
 
     fn handle_key(&mut self, key: KeyEvent) -> DialogResult<Action> {
         match key.code {
-            KeyCode::Left => {
+            KeyCode::Left | KeyCode::BackTab => {
                 if self.selected_btn > 0 {
                     self.selected_btn -= 1;
+                } else {
+                    self.selected_btn = self.buttons.len().saturating_sub(1);
                 }
                 DialogResult::Pending
             }
-            KeyCode::Right => {
+            KeyCode::Right | KeyCode::Tab => {
                 if self.selected_btn + 1 < self.buttons.len() {
                     self.selected_btn += 1;
+                } else {
+                    self.selected_btn = 0;
                 }
                 DialogResult::Pending
             }
@@ -847,11 +910,15 @@ impl Dialog for AboutDialog {
         (40, 10)
     }
 
-    fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
-        render_base_dialog(renderer, self.title(), x, y, w, h);
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        render_base_dialog(renderer, theme, self.title(), x, y, w, h);
+
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg);
 
         let content = [
             format!("led editor v0.1.0"),
+            format!("{}: v0.1.0", self.i18n_version),
             "A lightweight, modern TUI editor.".to_string(),
             "".to_string(),
             format!("{}: MIT", self.i18n_license),
@@ -866,7 +933,7 @@ impl Dialog for AboutDialog {
             for c in line.chars() {
                 let cw = c.width().unwrap_or(0) as u16;
                 if cur_lx + cw <= x + w - 1 {
-                    renderer.set_cell(cur_lx, ly, Cell { ch: c, ..Default::default() });
+                    renderer.set_cell(cur_lx, ly, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
                 }
                 cur_lx += cw;
             }
@@ -878,8 +945,8 @@ impl Dialog for AboutDialog {
         for (i, c) in btn_text.chars().enumerate() {
             renderer.set_cell(bx + i as u16, by, Cell {
                 ch: c,
-                bg: Color::White,
-                fg: Color::Black,
+                bg: to_ct_color(theme.ui.button_active_bg),
+                fg: to_ct_color(theme.ui.button_active_fg),
                 ..Default::default()
             });
         }
@@ -936,8 +1003,11 @@ impl Dialog for ReopenConfirmationDialog {
         (40, 8)
     }
 
-    fn render(&self, renderer: &mut Renderer, x: u16, y: u16, w: u16, h: u16) {
-        render_base_dialog(renderer, self.title(), x, y, w, h);
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        render_base_dialog(renderer, theme, self.title(), x, y, w, h);
+
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg);
 
         use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
         let msg_w = self.i18n_message.width() as u16;
@@ -947,7 +1017,7 @@ impl Dialog for ReopenConfirmationDialog {
         for c in self.i18n_message.chars() {
             let cw = c.width().unwrap_or(0) as u16;
             if cur_lx + cw <= x + w - 1 {
-                renderer.set_cell(cur_lx, ly, Cell { ch: c, ..Default::default() });
+                renderer.set_cell(cur_lx, ly, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
             }
             cur_lx += cw;
         }
@@ -960,8 +1030,8 @@ impl Dialog for ReopenConfirmationDialog {
         for (i, s) in buttons.iter().enumerate() {
             let btn_text = format!("[ {} ]", s);
             let is_selected = i == self.selected_btn;
-            let bg = if is_selected { Color::White } else { Color::Reset };
-            let fg = if is_selected { Color::Black } else { Color::White };
+            let bg = if is_selected { to_ct_color(theme.ui.button_active_bg) } else { to_ct_color(theme.ui.panel_bg) };
+            let fg = if is_selected { to_ct_color(theme.ui.button_active_fg) } else { to_ct_color(theme.ui.panel_fg) };
 
             for c in btn_text.chars() {
                 renderer.set_cell(bx, by, Cell { ch: c, bg, fg, ..Default::default() });
@@ -973,7 +1043,7 @@ impl Dialog for ReopenConfirmationDialog {
 
     fn handle_key(&mut self, key: KeyEvent) -> DialogResult<Action> {
         match key.code {
-            KeyCode::Left | KeyCode::Right => {
+            KeyCode::Left | KeyCode::BackTab | KeyCode::Right | KeyCode::Tab => {
                 self.selected_btn = 1 - self.selected_btn;
                 DialogResult::Pending
             }
@@ -1008,6 +1078,90 @@ impl Dialog for ReopenConfirmationDialog {
             }
         }
         DialogResult::Pending
+    }
+}
+
+pub struct GoToLineDialog {
+    pub input_text: String,
+    pub i18n_title: String,
+    pub i18n_goto: String,
+}
+
+impl GoToLineDialog {
+    pub fn new(i18n: &led_core::I18n) -> Self {
+        Self {
+            input_text: String::new(),
+            i18n_title: i18n.get("dialog.go_to_line").to_string(),
+            i18n_goto: i18n.get("dialog.go_to_line").to_string(),
+        }
+    }
+}
+
+impl Dialog for GoToLineDialog {
+    fn title(&self) -> &str {
+        &self.i18n_title
+    }
+
+    fn dimensions(&self) -> (u16, u16) {
+        (30, 6)
+    }
+
+    fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
+        render_base_dialog(renderer, theme, self.title(), x, y, w, h);
+
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg);
+        let input_bg = to_ct_color(theme.ui.panel_bg);
+        let input_fg = to_ct_color(theme.ui.panel_fg);
+
+        let label = format!("{}: ", self.i18n_goto);
+        let lx = x + 2;
+        let ly = y + 2;
+        for (i, c) in label.chars().enumerate() {
+            renderer.set_cell(lx + i as u16, ly, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
+        }
+
+        let input_x = lx + label.chars().count() as u16;
+        let input_w = w.saturating_sub(label.chars().count() as u16 + 4);
+        for dx in 0..input_w {
+            renderer.set_cell(input_x + dx, ly, Cell { ch: ' ', bg: input_bg, ..Default::default() });
+        }
+        for (i, c) in self.input_text.chars().enumerate() {
+            if (i as u16) < input_w {
+                renderer.set_cell(input_x + i as u16, ly, Cell { ch: c, bg: input_bg, fg: input_fg, ..Default::default() });
+            }
+        }
+    }
+
+    fn handle_key(&mut self, key: KeyEvent) -> DialogResult<Action> {
+        match key.code {
+            KeyCode::Char(c) if c.is_digit(10) => {
+                self.input_text.push(c);
+                DialogResult::Pending
+            }
+            KeyCode::Backspace => {
+                self.input_text.pop();
+                DialogResult::Pending
+            }
+            KeyCode::Enter => {
+                if let Ok(line) = self.input_text.parse::<usize>() {
+                    DialogResult::Ok(Action::ConfirmLine(line))
+                } else {
+                    DialogResult::Cancel
+                }
+            }
+            KeyCode::Esc => DialogResult::Cancel,
+            _ => DialogResult::Pending,
+        }
+    }
+
+    fn handle_mouse(&mut self, _mouse: MouseEvent, _x: u16, _y: u16, _w: u16, _h: u16) -> DialogResult<Action> {
+        DialogResult::Pending
+    }
+
+    fn cursor_pos(&self) -> Option<(u16, u16)> {
+        let label_len = format!("{}: ", self.i18n_goto).chars().count() as u16;
+        Some((2 + label_len + self.input_text.chars().count() as u16, 2))
     }
 }
 
