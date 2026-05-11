@@ -1,5 +1,13 @@
 # led Devlog
 
+## 2026-05-11
+
+### GUI Stability & UX (GUI)
+- **GUI Crash Fix (SIGABRT)**: Resolved a crash caused by recursive action dispatch and re-entrant window updates in the `Quit` and `Exit` handlers.
+- **Centralized Quit Logic**: Refactored the multi-window quit coordination to the application level in `app.rs`. `WindowView` no longer listens for `Quit` or `Exit` actions directly; instead, the global handler coordinates checking each window for modified buffers and prompting the user sequentially.
+- **Focus Restoration**: Fixed a bug where focus was not properly restored to the editor after closing a dialog. Now explicitly focusing the editor's `FocusHandle` in all dialog close paths.
+- **Window Centering & Theme Detection**: Implemented automatic window centering on the primary display and added OS light/dark mode detection for the default theme.
+
 ## 2026-05-10
 
 ### GUI Rendering & Documentation (GUI)

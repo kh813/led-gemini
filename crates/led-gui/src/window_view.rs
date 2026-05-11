@@ -69,63 +69,96 @@ impl WindowView {
             match event {
                 DialogEvent::Close => {
                     this.dialog = None;
-                    if let Some(window_handle) = cx.active_window() {
-                        let _ = cx.update_window(window_handle, |any_view, window, cx| {
-                            if let Ok(view_handle) = any_view.downcast::<WindowView>() {
-                                view_handle.update(cx, |view, cx| {
-                                    view.editor.update(cx, |editor, cx| {
-                                        editor.focus_handle.focus(window, cx);
-                                    });
-                                });
-                            }
-                        });
-                    }
                     cx.notify();
+                    
+                    // Defer focus restoration to avoid re-entrancy
+                    cx.spawn(|_, cx: &mut AsyncApp| {
+                        let cx = cx.clone();
+                        async move {
+                            cx.update(|cx| {
+                                if let Some(window_handle) = cx.active_window() {
+                                    let _ = cx.update_window(window_handle, |any_view, window, cx| {
+                                        if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                                            view_handle.update(cx, |view, cx| {
+                                                view.editor.update(cx, |editor, cx| {
+                                                    editor.focus_handle.focus(window, cx);
+                                                });
+                                            });
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }).detach();
                 }
                 DialogEvent::Save(intent) => {
+                    let intent = *intent;
                     this.workspace.update(cx, |w, cx| {
                         let _ = w.active_editor_mut().save();
                         cx.notify();
                     });
                     this.dialog = None;
-                    if let Some(window_handle) = cx.active_window() {
-                        let _ = cx.update_window(window_handle, |any_view, window, cx| {
-                            if let Ok(view_handle) = any_view.downcast::<WindowView>() {
-                                view_handle.update(cx, |view, cx| {
-                                    view.editor.update(cx, |editor, cx| {
-                                        editor.focus_handle.focus(window, cx);
-                                    });
-                                });
-                            }
-                        });
-                    }
                     cx.notify();
-                    match intent {
-                        UnsavedChangesIntent::Quit => cx.dispatch_action(&Quit {}),
-                        UnsavedChangesIntent::CloseTab => cx.dispatch_action(&CloseTab {}),
-                    }
+                    
+                    cx.spawn(move |_, cx: &mut AsyncApp| {
+                        let cx = cx.clone();
+                        async move {
+                            cx.update(|cx| {
+                                // Restore focus
+                                if let Some(window_handle) = cx.active_window() {
+                                    let _ = cx.update_window(window_handle, |any_view, window, cx| {
+                                        if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                                            view_handle.update(cx, |view, cx| {
+                                                view.editor.update(cx, |editor, cx| {
+                                                    editor.focus_handle.focus(window, cx);
+                                                });
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                // Dispatch action
+                                match intent {
+                                    UnsavedChangesIntent::Quit => cx.dispatch_action(&Quit {}),
+                                    UnsavedChangesIntent::CloseTab => cx.dispatch_action(&CloseTab {}),
+                                }
+                            });
+                        }
+                    }).detach();
                 }
                 DialogEvent::DontSave(intent) => {
+                    let intent = *intent;
                     this.workspace.update(cx, |w, cx| {
                         w.close_active_editor();
                         cx.notify();
                     });
                     this.dialog = None;
-                    if let Some(window_handle) = cx.active_window() {
-                        let _ = cx.update_window(window_handle, |any_view, window, cx| {
-                            if let Ok(view_handle) = any_view.downcast::<WindowView>() {
-                                view_handle.update(cx, |view, cx| {
-                                    view.editor.update(cx, |editor, cx| {
-                                        editor.focus_handle.focus(window, cx);
-                                    });
-                                });
-                            }
-                        });
-                    }
                     cx.notify();
-                    if *intent == UnsavedChangesIntent::Quit {
-                        cx.dispatch_action(&Quit {});
-                    }
+                    
+                    cx.spawn(move |_, cx: &mut AsyncApp| {
+                        let cx = cx.clone();
+                        async move {
+                            cx.update(|cx| {
+                                // Restore focus
+                                if let Some(window_handle) = cx.active_window() {
+                                    let _ = cx.update_window(window_handle, |any_view, window, cx| {
+                                        if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                                            view_handle.update(cx, |view, cx| {
+                                                view.editor.update(cx, |editor, cx| {
+                                                    editor.focus_handle.focus(window, cx);
+                                                });
+                                            });
+                                        }
+                                    });
+                                }
+                                
+                                // Dispatch action
+                                if intent == UnsavedChangesIntent::Quit {
+                                    cx.dispatch_action(&Quit {});
+                                }
+                            });
+                        }
+                    }).detach();
                 }
                 _ => {}
             }
@@ -472,11 +505,15 @@ impl WindowView {
         self.show_dialog(DialogType::GoToLine, window, cx);
     }
 
+    pub fn has_modified_buffers(&self, cx: &App) -> bool {
+        self.workspace.read(cx).has_modified_buffers()
+    }
+
     pub fn handle_about(&mut self, _: &About, window: &mut Window, cx: &mut Context<Self>) {
         self.show_dialog(DialogType::About, window, cx);
     }
 
-    fn handle_quit(&mut self, _: &Quit, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn handle_quit(&mut self, _action: &Quit, window: &mut Window, cx: &mut Context<Self>) {
         let mut modified_file = None;
         let mut target_idx = None;
         
@@ -495,43 +532,17 @@ impl WindowView {
 
         if let Some(filename) = modified_file {
             self.show_dialog(DialogType::UnsavedChanges { filename, intent: UnsavedChangesIntent::Quit }, window, cx);
-            return;
+        } else {
+            cx.propagate();
         }
-
-        // Check other windows
-        let my_id = cx.entity().entity_id();
-        for hw in cx.windows() {
-            let mut is_me = false;
-            let modified = cx.update_window(hw, |any_view, _window, cx| {
-                if any_view.entity_id() == my_id {
-                    is_me = true;
-                    return false;
-                }
-                if let Ok(view_handle) = any_view.downcast::<WindowView>() {
-                    view_handle.read(cx).workspace.read(cx).has_modified_buffers()
-                } else {
-                    false
-                }
-            }).unwrap_or(false);
-
-            if is_me {
-                continue;
-            }
-
-            if modified {
-                let _ = cx.update_window(hw, |_any_view, window, cx| {
-                    window.activate_window();
-                    cx.dispatch_action(&Quit {});
-                });
-                return;
-            }
-        }
-
-        cx.quit();
     }
 
-    fn handle_exit(&mut self, _: &Exit, window: &mut Window, cx: &mut Context<Self>) {
-        self.handle_quit(&Quit {}, window, cx);
+    pub fn handle_exit(&mut self, _action: &Exit, window: &mut Window, cx: &mut Context<Self>) {
+        if self.has_modified_buffers(cx) {
+            self.handle_quit(&Quit {}, window, cx);
+        } else {
+            cx.propagate();
+        }
     }
 
     fn handle_reopen_with_encoding(&mut self, action: &ReopenWithEncoding, _window: &mut Window, cx: &mut Context<Self>) {

@@ -1,6 +1,7 @@
 use gpui::*;
 use crate::workspace::Workspace;
 use crate::widgets::led_color_to_gpui;
+use crate::app::CloseTab;
 
 pub struct TabBar {
     workspace: Entity<Workspace>,
@@ -106,11 +107,11 @@ impl Render for TabBar {
                                                 .ml_2()
                                                 .child("×")
                                                 .on_mouse_down(MouseButton::Left, cx.listener(move |this, _, _, cx| {
-                                                    this.workspace.update(cx, |w, _| {
+                                                    this.workspace.update(cx, |w, cx| {
                                                         w.active_editor_index = idx;
-                                                        w.close_active_editor();
+                                                        cx.notify();
                                                     });
-                                                    cx.notify();
+                                                    cx.dispatch_action(&CloseTab {});
                                                 }))
                                         )
                                 }).collect::<Vec<_>>()
