@@ -124,11 +124,15 @@ pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Ve
     });
 
     app.on_action(|_: &Quit, cx| {
-        cx.quit();
+        if cx.windows().is_empty() {
+            cx.quit();
+        }
     });
 
     app.on_action(|_: &Exit, cx| {
-        cx.quit();
+        if cx.windows().is_empty() {
+            cx.quit();
+        }
     });
 
     // Initial window

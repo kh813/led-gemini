@@ -147,6 +147,8 @@ led file1.txt file2.txt  # Open multiple files in tabs
 | Close tab | `Ctrl+W` |
 | Exit | `Ctrl+Q` |
 
+> **Note**: On macOS, use the Command key (`⌘`) instead of `Ctrl` for all shortcuts (e.g., `⌘S` for Save).
+
 ### Edit
 
 | Action | Shortcut |

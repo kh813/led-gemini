@@ -60,4 +60,8 @@ impl Workspace {
             self.active_editor_index = (self.active_editor_index + self.editors.len() - 1) % self.editors.len();
         }
     }
+
+    pub fn has_modified_buffers(&self) -> bool {
+        self.editors.iter().any(|e| e.is_modified())
+    }
 }

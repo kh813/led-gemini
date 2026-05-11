@@ -3,12 +3,18 @@ use crate::workspace::Workspace;
 use led_core::i18n::I18n;
 use crate::widgets::led_color_to_gpui;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsavedChangesIntent {
+    Quit,
+    CloseTab,
+}
+
 pub enum DialogType {
     About,
     GoToLine,
     OpenFile,
     SaveAs,
-    UnsavedChanges { filename: String },
+    UnsavedChanges { filename: String, intent: UnsavedChangesIntent },
     Message { title: String, message: String },
 }
 
@@ -134,14 +140,14 @@ impl Dialog {
                 }
             }
             "enter" => {
-                if matches!(self.dialog_type, DialogType::UnsavedChanges { .. }) {
+                if let DialogType::UnsavedChanges { intent, .. } = &self.dialog_type {
                     match self.button_idx {
                         0 => {
-                            cx.emit(DialogEvent::Save);
+                            cx.emit(DialogEvent::Save(*intent));
                             self.close(cx);
                         }
                         1 => {
-                            cx.emit(DialogEvent::DontSave);
+                            cx.emit(DialogEvent::DontSave(*intent));
                             self.close(cx);
                         }
                         _ => self.close(cx),
@@ -207,8 +213,8 @@ impl Dialog {
 pub enum DialogEvent {
     Close,
     Confirm,
-    Save,
-    DontSave,
+    Save(UnsavedChangesIntent),
+    DontSave(UnsavedChangesIntent),
 }
 
 impl EventEmitter<DialogEvent> for Dialog {}
@@ -383,7 +389,7 @@ impl Dialog {
                             )
                     )
             }
-            DialogType::UnsavedChanges { filename } => {
+            DialogType::UnsavedChanges { filename, intent: _ } => {
                 div()
                     .flex()
                     .flex_col()
@@ -402,7 +408,9 @@ impl Dialog {
                                     .items_center()
                                     .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                        cx.emit(DialogEvent::Save);
+                                        if let DialogType::UnsavedChanges { intent, .. } = &this.dialog_type {
+                                            cx.emit(DialogEvent::Save(*intent));
+                                        }
                                         this.close(cx);
                                     }))
                                     .px_4()
@@ -419,7 +427,9 @@ impl Dialog {
                                     .items_center()
                                     .cursor_pointer()
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                                        cx.emit(DialogEvent::DontSave);
+                                        if let DialogType::UnsavedChanges { intent, .. } = &this.dialog_type {
+                                            cx.emit(DialogEvent::DontSave(*intent));
+                                        }
                                         this.close(cx);
                                     }))
                                     .px_4()

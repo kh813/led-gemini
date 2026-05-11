@@ -12,7 +12,7 @@ use led_core::buffer::Editor;
 #[cfg(not(target_os = "macos"))]
 use crate::widgets::menu_bar::MenuBar;
 
-use crate::widgets::dialog::{Dialog, DialogType, DialogEvent};
+use crate::widgets::dialog::{Dialog, DialogType, DialogEvent, UnsavedChangesIntent};
 
 pub struct WindowView {
     config: Config,
@@ -71,21 +71,26 @@ impl WindowView {
                     this.dialog = None;
                     cx.notify();
                 }
-                DialogEvent::Save => {
+                DialogEvent::Save(intent) => {
                     this.workspace.update(cx, |w, cx| {
                         let _ = w.active_editor_mut().save();
                         cx.notify();
                     });
                     this.dialog = None;
-                    cx.dispatch_action(&Quit {});
+                    match intent {
+                        UnsavedChangesIntent::Quit => cx.dispatch_action(&Quit {}),
+                        UnsavedChangesIntent::CloseTab => cx.dispatch_action(&CloseTab {}),
+                    }
                 }
-                DialogEvent::DontSave => {
+                DialogEvent::DontSave(intent) => {
                     this.workspace.update(cx, |w, cx| {
                         w.close_active_editor();
                         cx.notify();
                     });
                     this.dialog = None;
-                    cx.dispatch_action(&Quit {});
+                    if *intent == UnsavedChangesIntent::Quit {
+                        cx.dispatch_action(&Quit {});
+                    }
                 }
                 _ => {}
             }
@@ -179,11 +184,19 @@ impl WindowView {
         }).detach();
     }
 
-    fn handle_close_tab(&mut self, _: &CloseTab, _window: &mut Window, cx: &mut Context<Self>) {
-        self.workspace.update(cx, |w, cx| {
-            w.close_active_editor();
-            cx.notify();
-        });
+    fn handle_close_tab(&mut self, _: &CloseTab, window: &mut Window, cx: &mut Context<Self>) {
+        let is_modified = self.workspace.read(cx).active_editor().is_modified();
+        if is_modified {
+            let filename = self.workspace.read(cx).active_editor().path.as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or(self.i18n.get("status.no_name").to_string());
+            self.show_dialog(DialogType::UnsavedChanges { filename, intent: UnsavedChangesIntent::CloseTab }, window, cx);
+        } else {
+            self.workspace.update(cx, |w, cx| {
+                w.close_active_editor();
+                cx.notify();
+            });
+        }
     }
 
     fn handle_next_tab(&mut self, _: &NextTab, _window: &mut Window, cx: &mut Context<Self>) {
@@ -446,10 +459,32 @@ impl WindowView {
         });
 
         if let Some(filename) = modified_file {
-            self.show_dialog(DialogType::UnsavedChanges { filename }, window, cx);
-        } else {
-            cx.quit();
+            self.show_dialog(DialogType::UnsavedChanges { filename, intent: UnsavedChangesIntent::Quit }, window, cx);
+            return;
         }
+
+        // Check other windows
+        let current_handle = window.window_handle();
+        let other_windows: Vec<_> = cx.windows().into_iter().filter(|w| *w != current_handle).collect();
+        for hw in other_windows {
+            let modified = cx.update_window(hw, |any_view, _window, cx| {
+                if let Ok(view_handle) = any_view.downcast::<WindowView>() {
+                    view_handle.read(cx).workspace.read(cx).has_modified_buffers()
+                } else {
+                    false
+                }
+            }).unwrap_or(false);
+
+            if modified {
+                let _ = cx.update_window(hw, |_any_view, window, cx| {
+                    window.activate_window();
+                    cx.dispatch_action(&Quit {});
+                });
+                return;
+            }
+        }
+
+        cx.quit();
     }
 
     fn handle_exit(&mut self, _: &Exit, window: &mut Window, cx: &mut Context<Self>) {
