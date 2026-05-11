@@ -23,6 +23,8 @@ pub struct Dialog {
     files: Vec<FileEntry>,
     selected_idx: usize,
     show_hidden: bool,
+    // Button focus state for UnsavedChanges
+    button_idx: usize,
 }
 
 #[derive(Clone)]
@@ -46,6 +48,7 @@ impl Dialog {
             files: Vec::new(),
             selected_idx: 0,
             show_hidden: false,
+            button_idx: 0,
         };
         this.refresh_files();
         this
@@ -85,6 +88,25 @@ impl Dialog {
 
     fn handle_keydown(&mut self, event: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         match event.keystroke.key.as_str() {
+            "tab" => {
+                if matches!(self.dialog_type, DialogType::UnsavedChanges { .. }) {
+                    if event.keystroke.modifiers.shift {
+                        self.button_idx = (self.button_idx + 2) % 3; // 0->2, 1->0, 2->1
+                    } else {
+                        self.button_idx = (self.button_idx + 1) % 3;
+                    }
+                }
+            }
+            "left" => {
+                if matches!(self.dialog_type, DialogType::UnsavedChanges { .. }) {
+                    self.button_idx = self.button_idx.saturating_sub(1);
+                }
+            }
+            "right" => {
+                if matches!(self.dialog_type, DialogType::UnsavedChanges { .. }) {
+                    self.button_idx = (self.button_idx + 1).min(2);
+                }
+            }
             "up" => {
                 if matches!(self.dialog_type, DialogType::OpenFile | DialogType::SaveAs) {
                     self.selected_idx = self.selected_idx.saturating_sub(1);
@@ -112,7 +134,21 @@ impl Dialog {
                 }
             }
             "enter" => {
-                self.confirm(cx);
+                if matches!(self.dialog_type, DialogType::UnsavedChanges { .. }) {
+                    match self.button_idx {
+                        0 => {
+                            cx.emit(DialogEvent::Save);
+                            self.close(cx);
+                        }
+                        1 => {
+                            cx.emit(DialogEvent::DontSave);
+                            self.close(cx);
+                        }
+                        _ => self.close(cx),
+                    }
+                } else {
+                    self.confirm(cx);
+                }
             }
             "escape" => {
                 self.close(cx);
@@ -372,6 +408,8 @@ impl Dialog {
                                     .px_4()
                                     .bg(led_color_to_gpui(theme.ui.button_active_bg))
                                     .text_color(led_color_to_gpui(theme.ui.button_active_fg))
+                                    .border_2()
+                                    .border_color(if self.button_idx == 0 { gpui::rgb(0xffffff) } else { hsla(0.,0.,0.,0.).into() })
                                     .child(self.i18n.get("dialog.save").to_string())
                             )
                             .child(
@@ -386,6 +424,8 @@ impl Dialog {
                                     }))
                                     .px_4()
                                     .bg(led_color_to_gpui(theme.ui.panel_bg))
+                                    .border_2()
+                                    .border_color(if self.button_idx == 1 { gpui::rgb(0xffffff) } else { hsla(0.,0.,0.,0.).into() })
                                     .child(self.i18n.get("dialog.dont_save").to_string())
                             )
                             .child(
@@ -397,6 +437,8 @@ impl Dialog {
                                     .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| this.close(cx)))
                                     .px_4()
                                     .bg(led_color_to_gpui(theme.ui.panel_bg))
+                                    .border_2()
+                                    .border_color(if self.button_idx == 2 { gpui::rgb(0xffffff) } else { hsla(0.,0.,0.,0.).into() })
                                     .child(self.i18n.get("dialog.cancel").to_string())
                             )
                     )

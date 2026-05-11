@@ -10,7 +10,8 @@ pub struct EditorView {
     pub focus_handle: FocusHandle,
     last_click_at: Option<std::time::Instant>,
     click_count: usize,
-    composition_text: Option<String>,
+    preedit_text: Option<String>,
+    preedit_range: Option<std::ops::Range<usize>>,
 }
 
 impl EditorView {
@@ -24,7 +25,8 @@ impl EditorView {
             focus_handle: cx.focus_handle(),
             last_click_at: None,
             click_count: 0,
-            composition_text: None,
+            preedit_text: None,
+            preedit_range: None,
         }
     }
 
@@ -215,10 +217,10 @@ impl EntityInputHandler for EditorView {
     }
 
     fn marked_text_range(&self, _window: &mut Window, cx: &mut Context<Self>) -> Option<std::ops::Range<usize>> {
-        if self.composition_text.is_some() {
+        if self.preedit_text.is_some() {
             let workspace = self.workspace.read(cx);
             let editor = workspace.active_editor();
-            Some(editor.cursor..editor.cursor + self.composition_text.as_ref().map(|t| t.chars().count()).unwrap_or(0))
+            Some(editor.cursor..editor.cursor + self.preedit_text.as_ref().map(|t| t.chars().count()).unwrap_or(0))
         } else {
             None
         }
@@ -234,11 +236,12 @@ impl EntityInputHandler for EditorView {
             editor.selection = None;
             cx.notify();
         });
-        self.composition_text = None;
+        self.preedit_text = None;
+        self.preedit_range = None;
         cx.notify();
     }
 
-    fn replace_and_mark_text_in_range(&mut self, range: Option<std::ops::Range<usize>>, text: &str, _new_selected_range: Option<std::ops::Range<usize>>, _window: &mut Window, cx: &mut Context<Self>) {
+    fn replace_and_mark_text_in_range(&mut self, range: Option<std::ops::Range<usize>>, text: &str, new_selected_range: Option<std::ops::Range<usize>>, _window: &mut Window, cx: &mut Context<Self>) {
         if let Some(range) = range {
              self.workspace.update(cx, |w, cx| {
                 let editor = w.active_editor_mut();
@@ -246,12 +249,13 @@ impl EntityInputHandler for EditorView {
                 cx.notify();
             });
         }
-        self.composition_text = if text.is_empty() { None } else { Some(text.to_string()) };
+        self.preedit_text = if text.is_empty() { None } else { Some(text.to_string()) };
+        self.preedit_range = new_selected_range;
         cx.notify();
     }
 
     fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = self.composition_text.take() {
+        if let Some(text) = self.preedit_text.take() {
             self.workspace.update(cx, |w, _| {
                 let editor = w.active_editor_mut();
                 if let Some(range) = editor.selection.clone() {
@@ -261,6 +265,7 @@ impl EntityInputHandler for EditorView {
                 editor.cursor += text.chars().count();
             });
         }
+        self.preedit_range = None;
         cx.notify();
     }
 
@@ -500,20 +505,20 @@ impl EditorView {
                             .children(self.render_line_content(line_idx, &line_str, workspace, is_cursor_line))
                     )
                     .child(if is_cursor_line {
-                        let comp_x = visual_cursor_col as f32 * char_width;
-                        let mut comp_visual_width = 0;
-                        if let Some(ref comp) = self.composition_text {
-                            for c in comp.chars() {
-                                comp_visual_width += c.width().unwrap_or(0);
+                        let cursor_x = visual_cursor_col as f32 * char_width;
+                        let mut preedit_visual_width = 0;
+                        if let Some(ref preedit) = self.preedit_text {
+                            for c in preedit.chars() {
+                                preedit_visual_width += c.width().unwrap_or(0);
                             }
                         }
-                        let comp_w = comp_visual_width as f32 * char_width;
+                        let preedit_w = preedit_visual_width as f32 * char_width;
                         
-                        // Render cursor
+                        // Render cursor at the end of preedit text
                         div()
                             .absolute()
                             .top_0()
-                            .left(px(comp_x + comp_w - (editor.scroll_col as f32 * char_width)))
+                            .left(px(cursor_x + preedit_w - (editor.scroll_col as f32 * char_width)))
                             .w(px(2.0))
                             .h_full()
                             .bg(led_color_to_gpui(theme.editor.cursor))
@@ -532,39 +537,29 @@ impl EditorView {
         let (_, cursor_col) = editor.char_to_line_col(editor.cursor);
 
         let mut elements = Vec::new();
+        let mut preedit_rendered = false;
 
         // Helper to render a chunk of text with potential selection highlight
         let mut render_chunk = |text: &str, start_char: usize, token_color: Option<Rgba>| {
             if text.is_empty() { return; }
             let chunk_chars: Vec<char> = text.chars().collect();
             let chunk_len = chunk_chars.len();
+            let chunk_start_col = start_char - line_start_char;
             
-            // If this is the cursor line and we have composition text, 
-            // we might need to split this chunk to insert the composition text
-            if is_cursor_line && self.composition_text.is_some() {
-                let chunk_start_col = start_char - line_start_char;
-                if cursor_col >= chunk_start_col && cursor_col < chunk_start_col + chunk_len {
+            // If this is the cursor line and we have preedit text, 
+            // we might need to split this chunk to insert the preedit text
+            if is_cursor_line && self.preedit_text.is_some() && !preedit_rendered {
+                if cursor_col >= chunk_start_col && cursor_col <= chunk_start_col + chunk_len {
                     let split_idx = cursor_col - chunk_start_col;
                     let part1 = chunk_chars[..split_idx].iter().collect::<String>();
                     let part2 = chunk_chars[split_idx..].iter().collect::<String>();
                     
                     self.render_chunk_internal(&part1, start_char, token_color, selection.clone(), theme, &mut elements);
                     
-                    if let Some(ref comp) = self.composition_text {
-                        elements.push(
-                            div()
-                                .h_full()
-                                .flex()
-                                .items_center()
-                                .text_color(led_color_to_gpui(theme.editor.foreground))
-                                .bg(led_color_to_gpui(theme.editor.selection))
-                                .border_b_1()
-                                .border_color(led_color_to_gpui(theme.editor.foreground))
-                                .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
-                                .child(comp.clone())
-                                .into_any_element()
-                        );
+                    if let Some(ref preedit) = self.preedit_text {
+                        elements.push(self.render_preedit_element(preedit, theme));
                     }
+                    preedit_rendered = true;
                     
                     self.render_chunk_internal(&part2, start_char + split_idx, token_color, selection.clone(), theme, &mut elements);
                     return;
@@ -595,7 +590,29 @@ impl EditorView {
         } else {
             render_chunk(line_str, line_start_char, None);
         }
+
+        // If line is empty or cursor was at the very end and no chunk captured it
+        if is_cursor_line && !preedit_rendered {
+            if let Some(ref preedit) = self.preedit_text {
+                elements.push(self.render_preedit_element(preedit, theme));
+            }
+        }
+
         elements
+    }
+
+    fn render_preedit_element(&self, text: &str, _theme: &Theme) -> AnyElement {
+        div()
+            .h_full()
+            .flex()
+            .items_center()
+            .text_color(gpui::rgb(0xffffff))
+            .bg(gpui::rgb(0x0000ff))
+            .border_b_1()
+            .border_color(gpui::rgb(0xffffff))
+            .font_family(if cfg!(target_os = "macos") { ".AppleSystemUIFontMonospaced-Regular" } else { "monospace" })
+            .child(text.to_string())
+            .into_any_element()
     }
 
     fn render_chunk_internal(&self, text: &str, start_char: usize, token_color: Option<Rgba>, selection: Option<std::ops::Range<usize>>, theme: &Theme, elements: &mut Vec<AnyElement>) {
