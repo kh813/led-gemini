@@ -776,6 +776,13 @@ In-window menu item clicked (Windows/Linux)
   - Ignore non-file drops (e.g., text snippets, images) or show a non-intrusive error message if a file cannot be opened.
   - Ensure the drag-and-drop operation does not interrupt any ongoing modal dialogs unless the dialog is dismissed.
 
+### Default Window Size
+
+`led-gui` starts with a default window size optimized for readability, roughly equivalent to a 120-column by 35-row terminal:
+- **Width**: ~1000px (calculated as 120 columns * 8.4px character width)
+- **Height**: ~830px (calculated as 35 rows * 22px line height + Tab Bar + Status Bar + padding)
+- **Position**: Centered on the primary display at startup.
+
 ### Architecture
 
 `led-gui` depends only on `led-core` and `gpui`. It does **not** depend on `crossterm`.

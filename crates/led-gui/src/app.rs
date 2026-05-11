@@ -162,14 +162,28 @@ pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Ve
 }
 
 pub fn new_window(config: Config, i18n: I18n, cx: &mut App) {
-    cx.open_window(WindowOptions::default(), move |window, cx| {
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: Point::default(),
+            size: size(px(1008.0), px(826.0)),
+        })),
+        ..Default::default()
+    };
+    cx.open_window(options, move |window, cx| {
         let workspace = cx.new(|_| Workspace::new(config.clone()));
         cx.new(|cx| WindowView::new(config, i18n, workspace, window, cx))
     }).expect("Failed to open window");
 }
 
 pub fn open_paths(paths: Vec<std::path::PathBuf>, config: Config, i18n: I18n, cx: &mut App) {
-    cx.open_window(WindowOptions::default(), move |window, cx| {
+    let options = WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds {
+            origin: Point::default(),
+            size: size(px(1008.0), px(826.0)),
+        })),
+        ..Default::default()
+    };
+    cx.open_window(options, move |window, cx| {
         let workspace = cx.new(|_| {
             let mut w = Workspace::new(config.clone());
             let mut opened_any = false;
