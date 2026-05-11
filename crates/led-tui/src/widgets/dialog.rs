@@ -398,10 +398,10 @@ impl FileBrowser {
     }
 
     pub fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
-        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
-        let dialog_fg = to_ct_color(theme.ui.panel_fg);
-        let active_bg = to_ct_color(theme.ui.button_active_bg);
-        let active_fg = to_ct_color(theme.ui.button_active_fg);
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg, theme);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg, theme);
+        let active_bg = to_ct_color(theme.ui.button_active_bg, theme);
+        let active_fg = to_ct_color(theme.ui.button_active_fg, theme);
 
         // Render current dir
         let dir_str = self.current_dir.to_string_lossy();
@@ -433,7 +433,7 @@ impl FileBrowser {
         for nav in navs {
             let nav_str = format!(" {} ", nav);
             for c in nav_str.chars() {
-                renderer.set_cell(nx, ny, Cell { ch: c, bg: to_ct_color(theme.ui.status_bar_bg), fg: to_ct_color(theme.ui.status_bar_fg), ..Default::default() });
+                renderer.set_cell(nx, ny, Cell { ch: c, bg: to_ct_color(theme.ui.status_bar_bg, theme), fg: to_ct_color(theme.ui.status_bar_fg, theme), ..Default::default() });
                 nx += 1;
             }
             nx += 1;
@@ -474,7 +474,7 @@ impl FileBrowser {
                 let bg = if is_selected { 
                     if self.input_focused {
                         // Inactive but selected
-                        to_ct_color(theme.ui.tab_inactive_bg)
+                        to_ct_color(theme.ui.tab_inactive_bg, theme)
                     } else {
                         active_bg 
                     }
@@ -483,7 +483,7 @@ impl FileBrowser {
                 };
                 let fg = if is_selected { 
                     if self.input_focused {
-                        to_ct_color(theme.ui.tab_inactive_fg)
+                        to_ct_color(theme.ui.tab_inactive_fg, theme)
                     } else {
                         active_fg
                     }
@@ -553,8 +553,8 @@ impl FileBrowser {
 
         // Input field
         let iy = y + h - 2;
-        let input_bg = if self.input_focused { active_bg } else { to_ct_color(theme.ui.panel_bg) };
-        let input_fg = if self.input_focused { active_fg } else { to_ct_color(theme.ui.panel_fg) };
+        let input_bg = if self.input_focused { active_bg } else { to_ct_color(theme.ui.panel_bg, theme) };
+        let input_fg = if self.input_focused { active_fg } else { to_ct_color(theme.ui.panel_fg, theme) };
         
         for (i, c) in self.i18n_filename.chars().enumerate() {
             renderer.set_cell(x + 2 + i as u16, iy, Cell { ch: c, bg: dialog_bg, fg: dialog_fg, ..Default::default() });
@@ -573,13 +573,27 @@ impl FileBrowser {
     }
 }
 
-fn to_ct_color(c: led_core::theme::Color) -> Color {
-    Color::Rgb { r: c.0, g: c.1, b: c.2 }
+fn to_ct_color(c: led_core::theme::Color, theme: &led_core::theme::Theme) -> Color {
+    if theme.meta.name == "Terminal Default" {
+        match c {
+            led_core::theme::Color::Rgb(0, 0, 0) | led_core::theme::Color::Rgb(255, 255, 255) => {
+                return Color::Reset;
+            }
+            led_core::theme::Color::Ansi(i) => {
+                return Color::AnsiValue(i);
+            }
+            _ => {}
+        }
+    }
+    match c {
+        led_core::theme::Color::Rgb(r, g, b) => Color::Rgb { r, g, b },
+        led_core::theme::Color::Ansi(i) => Color::AnsiValue(i),
+    }
 }
 
 pub fn render_base_dialog(renderer: &mut Renderer, theme: &led_core::theme::Theme, title: &str, x: u16, y: u16, w: u16, h: u16) {
-    let bg = to_ct_color(theme.ui.dialog_bg);
-    let border_fg = to_ct_color(theme.ui.dialog_border);
+    let bg = to_ct_color(theme.ui.dialog_bg, theme);
+    let border_fg = to_ct_color(theme.ui.dialog_border, theme);
 
     // Fill background
     for dy in 0..h {
@@ -652,7 +666,7 @@ impl Dialog for OpenDialog {
             let msg_y = y + h - 3;
             for (i, c) in msg.chars().enumerate() {
                 if (i as u16) < w - 4 {
-                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, bg: to_ct_color(theme.ui.dialog_bg), fg: Color::Red, ..Default::default() });
+                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, bg: to_ct_color(theme.ui.dialog_bg, theme), fg: Color::Red, ..Default::default() });
                 }
             }
         }
@@ -736,7 +750,7 @@ impl Dialog for SaveAsDialog {
             let msg_y = y + h - 3;
             for (i, c) in msg.chars().enumerate() {
                 if (i as u16) < w - 4 {
-                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, bg: to_ct_color(theme.ui.dialog_bg), fg: Color::Red, ..Default::default() });
+                    renderer.set_cell(msg_x + i as u16, msg_y, Cell { ch: c, bg: to_ct_color(theme.ui.dialog_bg, theme), fg: Color::Red, ..Default::default() });
                 }
             }
         }
@@ -803,8 +817,8 @@ impl Dialog for MessageDialog {
     fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
         render_base_dialog(renderer, theme, self.title(), x, y, w, h);
 
-        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
-        let dialog_fg = to_ct_color(theme.ui.panel_fg);
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg, theme);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg, theme);
 
         use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
         let msg_w = self.message.width() as u16;
@@ -827,8 +841,8 @@ impl Dialog for MessageDialog {
         for (i, (s, _)) in self.buttons.iter().enumerate() {
             let btn_text = format!("[ {} ]", s);
             let is_selected = i == self.selected_btn;
-            let bg = if is_selected { to_ct_color(theme.ui.button_active_bg) } else { to_ct_color(theme.ui.panel_bg) };
-            let fg = if is_selected { to_ct_color(theme.ui.button_active_fg) } else { to_ct_color(theme.ui.panel_fg) };
+            let bg = if is_selected { to_ct_color(theme.ui.button_active_bg, theme) } else { to_ct_color(theme.ui.panel_bg, theme) };
+            let fg = if is_selected { to_ct_color(theme.ui.button_active_fg, theme) } else { to_ct_color(theme.ui.panel_fg, theme) };
 
             for c in btn_text.chars() {
                 renderer.set_cell(bx, by, Cell { ch: c, bg, fg, ..Default::default() });
@@ -913,8 +927,8 @@ impl Dialog for AboutDialog {
     fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
         render_base_dialog(renderer, theme, self.title(), x, y, w, h);
 
-        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
-        let dialog_fg = to_ct_color(theme.ui.panel_fg);
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg, theme);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg, theme);
 
         let content = [
             format!("led editor v0.1.0"),
@@ -945,8 +959,8 @@ impl Dialog for AboutDialog {
         for (i, c) in btn_text.chars().enumerate() {
             renderer.set_cell(bx + i as u16, by, Cell {
                 ch: c,
-                bg: to_ct_color(theme.ui.button_active_bg),
-                fg: to_ct_color(theme.ui.button_active_fg),
+                bg: to_ct_color(theme.ui.button_active_bg, theme),
+                fg: to_ct_color(theme.ui.button_active_fg, theme),
                 ..Default::default()
             });
         }
@@ -1006,8 +1020,8 @@ impl Dialog for ReopenConfirmationDialog {
     fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
         render_base_dialog(renderer, theme, self.title(), x, y, w, h);
 
-        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
-        let dialog_fg = to_ct_color(theme.ui.panel_fg);
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg, theme);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg, theme);
 
         use unicode_width::{UnicodeWidthStr, UnicodeWidthChar};
         let msg_w = self.i18n_message.width() as u16;
@@ -1030,8 +1044,8 @@ impl Dialog for ReopenConfirmationDialog {
         for (i, s) in buttons.iter().enumerate() {
             let btn_text = format!("[ {} ]", s);
             let is_selected = i == self.selected_btn;
-            let bg = if is_selected { to_ct_color(theme.ui.button_active_bg) } else { to_ct_color(theme.ui.panel_bg) };
-            let fg = if is_selected { to_ct_color(theme.ui.button_active_fg) } else { to_ct_color(theme.ui.panel_fg) };
+            let bg = if is_selected { to_ct_color(theme.ui.button_active_bg, theme) } else { to_ct_color(theme.ui.panel_bg, theme) };
+            let fg = if is_selected { to_ct_color(theme.ui.button_active_fg, theme) } else { to_ct_color(theme.ui.panel_fg, theme) };
 
             for c in btn_text.chars() {
                 renderer.set_cell(bx, by, Cell { ch: c, bg, fg, ..Default::default() });
@@ -1109,10 +1123,10 @@ impl Dialog for GoToLineDialog {
     fn render(&self, renderer: &mut Renderer, theme: &led_core::theme::Theme, x: u16, y: u16, w: u16, h: u16) {
         render_base_dialog(renderer, theme, self.title(), x, y, w, h);
 
-        let dialog_bg = to_ct_color(theme.ui.dialog_bg);
-        let dialog_fg = to_ct_color(theme.ui.panel_fg);
-        let input_bg = to_ct_color(theme.ui.panel_bg);
-        let input_fg = to_ct_color(theme.ui.panel_fg);
+        let dialog_bg = to_ct_color(theme.ui.dialog_bg, theme);
+        let dialog_fg = to_ct_color(theme.ui.panel_fg, theme);
+        let input_bg = to_ct_color(theme.ui.panel_bg, theme);
+        let input_fg = to_ct_color(theme.ui.panel_fg, theme);
 
         let label = format!("{}: ", self.i18n_goto);
         let lx = x + 2;

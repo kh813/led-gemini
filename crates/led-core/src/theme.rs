@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Color(pub u8, pub u8, pub u8);
+pub enum Color {
+    Rgb(u8, u8, u8),
+    Ansi(u8),
+}
 
 impl Color {
     pub fn from_hex(hex: &str) -> Option<Self> {
@@ -12,11 +15,14 @@ impl Color {
         let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
         let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
         let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-        Some(Color(r, g, b))
+        Some(Color::Rgb(r, g, b))
     }
 
     pub fn to_hex(&self) -> String {
-        format!("#{:02x}{:02x}{:02x}", self.0, self.1, self.2)
+        match self {
+            Color::Rgb(r, g, b) => format!("#{:02x}{:02x}{:02x}", r, g, b),
+            Color::Ansi(i) => format!("ansi({})", i),
+        }
     }
 }
 
@@ -26,7 +32,11 @@ impl<'de> Deserialize<'de> for Color {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        Color::from_hex(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {}", s)))
+        if s.starts_with("ansi(") && s.ends_with(')') {
+            let i = s[5..s.len()-1].parse::<u8>().map_err(|e| serde::de::Error::custom(e))?;
+            return Ok(Color::Ansi(i));
+        }
+        Color::from_hex(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid color: {}", s)))
     }
 }
 
@@ -49,6 +59,7 @@ pub struct Theme {
 
 impl Theme {
     pub fn builtins() -> Vec<Self> {
+        let mut themes = vec![Self::terminal_default()];
         let files = [
             include_str!("../../../assets/themes/catppuccin-latte.toml"),
             include_str!("../../../assets/themes/catppuccin-mocha.toml"),
@@ -58,10 +69,61 @@ impl Theme {
             include_str!("../../../assets/themes/tokyo-night.toml"),
         ];
 
-        files
-            .iter()
-            .map(|s| toml::from_str(s).expect("failed to parse builtin theme"))
-            .collect()
+        for s in files {
+            themes.push(toml::from_str(s).expect("failed to parse builtin theme"));
+        }
+        themes
+    }
+
+    pub fn terminal_default() -> Self {
+        Self {
+            meta: ThemeMeta {
+                name: "Terminal Default".to_string(),
+                author: Some("led contributors".to_string()),
+                version: Some("1.0".to_string()),
+            },
+            editor: EditorColors {
+                background: Color::Rgb(0, 0, 0), // Special: will be Reset in TUI
+                foreground: Color::Rgb(255, 255, 255), // Special: will be Reset in TUI
+                cursor: Color::Rgb(255, 255, 255),
+                selection: Color::Ansi(8),
+                line_number: Color::Ansi(8),
+                current_line: None,
+            },
+            ui: UiColors {
+                menu_bar_bg: Color::Ansi(0),
+                menu_bar_fg: Color::Ansi(7),
+                menu_item_active_bg: Color::Ansi(7),
+                menu_item_active_fg: Color::Ansi(0),
+                tab_bar_bg: Color::Ansi(0),
+                tab_active_bg: Color::Ansi(8),
+                tab_active_fg: Color::Ansi(15),
+                tab_inactive_bg: Color::Ansi(0),
+                tab_inactive_fg: Color::Ansi(8),
+                status_bar_bg: Color::Ansi(0),
+                status_bar_fg: Color::Ansi(7),
+                panel_bg: Color::Ansi(0),
+                panel_fg: Color::Ansi(7),
+                panel_error_fg: Color::Ansi(1),
+                dialog_bg: Color::Ansi(0),
+                dialog_border: Color::Ansi(7),
+                button_active_bg: Color::Ansi(7),
+                button_active_fg: Color::Ansi(0),
+            },
+            syntax: SyntaxColors {
+                keyword: Some(Color::Ansi(5)),     // Magenta
+                type_name: Some(Color::Ansi(3)),   // Yellow
+                function: Some(Color::Ansi(4)),    // Blue
+                string: Some(Color::Ansi(2)),      // Green
+                number: Some(Color::Ansi(11)),     // Bright Yellow
+                comment: Some(Color::Ansi(8)),     // Bright Black (Gray)
+                operator: Some(Color::Ansi(6)),    // Cyan
+                punctuation: Some(Color::Ansi(7)), // White
+                constant: Some(Color::Ansi(11)),
+                attribute: Some(Color::Ansi(5)),
+                error: Some(Color::Ansi(1)),       // Red
+            },
+        }
     }
 }
 
@@ -129,45 +191,45 @@ impl Default for Theme {
                 version: Some("1.0".to_string()),
             },
             editor: EditorColors {
-                background: Color(26, 27, 38),
-                foreground: Color(192, 202, 245),
-                cursor: Color(192, 202, 245),
-                selection: Color(40, 52, 87),
-                line_number: Color(59, 66, 97),
-                current_line: Some(Color(30, 32, 48)),
+                background: Color::Rgb(26, 27, 38),
+                foreground: Color::Rgb(192, 202, 245),
+                cursor: Color::Rgb(192, 202, 245),
+                selection: Color::Rgb(40, 52, 87),
+                line_number: Color::Rgb(59, 66, 97),
+                current_line: Some(Color::Rgb(30, 32, 48)),
             },
             ui: UiColors {
-                menu_bar_bg: Color(22, 22, 30),
-                menu_bar_fg: Color(192, 202, 245),
-                menu_item_active_bg: Color(122, 162, 247),
-                menu_item_active_fg: Color(26, 27, 38),
-                tab_bar_bg: Color(22, 22, 30),
-                tab_active_bg: Color(26, 27, 38),
-                tab_active_fg: Color(192, 202, 245),
-                tab_inactive_bg: Color(22, 22, 30),
-                tab_inactive_fg: Color(86, 95, 137),
-                status_bar_bg: Color(22, 22, 30),
-                status_bar_fg: Color(192, 202, 245),
-                panel_bg: Color(22, 22, 30),
-                panel_fg: Color(192, 202, 245),
-                panel_error_fg: Color(247, 118, 142),
-                dialog_bg: Color(30, 32, 48),
-                dialog_border: Color(122, 162, 247),
-                button_active_bg: Color(122, 162, 247),
-                button_active_fg: Color(26, 27, 38),
+                menu_bar_bg: Color::Rgb(22, 22, 30),
+                menu_bar_fg: Color::Rgb(192, 202, 245),
+                menu_item_active_bg: Color::Rgb(122, 162, 247),
+                menu_item_active_fg: Color::Rgb(26, 27, 38),
+                tab_bar_bg: Color::Rgb(22, 22, 30),
+                tab_active_bg: Color::Rgb(26, 27, 38),
+                tab_active_fg: Color::Rgb(192, 202, 245),
+                tab_inactive_bg: Color::Rgb(22, 22, 30),
+                tab_inactive_fg: Color::Rgb(86, 95, 137),
+                status_bar_bg: Color::Rgb(22, 22, 30),
+                status_bar_fg: Color::Rgb(192, 202, 245),
+                panel_bg: Color::Rgb(22, 22, 30),
+                panel_fg: Color::Rgb(192, 202, 245),
+                panel_error_fg: Color::Rgb(247, 118, 142),
+                dialog_bg: Color::Rgb(30, 32, 48),
+                dialog_border: Color::Rgb(122, 162, 247),
+                button_active_bg: Color::Rgb(122, 162, 247),
+                button_active_fg: Color::Rgb(26, 27, 38),
             },
             syntax: SyntaxColors {
-                keyword: Some(Color(187, 154, 247)),
-                type_name: Some(Color(42, 195, 222)),
-                function: Some(Color(122, 162, 247)),
-                string: Some(Color(158, 206, 106)),
-                number: Some(Color(255, 158, 100)),
-                comment: Some(Color(86, 95, 137)),
-                operator: Some(Color(137, 221, 255)),
-                punctuation: Some(Color(192, 202, 245)),
-                constant: Some(Color(255, 158, 100)),
-                attribute: Some(Color(187, 154, 247)),
-                error: Some(Color(247, 118, 142)),
+                keyword: Some(Color::Rgb(187, 154, 247)),
+                type_name: Some(Color::Rgb(42, 195, 222)),
+                function: Some(Color::Rgb(122, 162, 247)),
+                string: Some(Color::Rgb(158, 206, 106)),
+                number: Some(Color::Rgb(255, 158, 100)),
+                comment: Some(Color::Rgb(86, 95, 137)),
+                operator: Some(Color::Rgb(137, 221, 255)),
+                punctuation: Some(Color::Rgb(192, 202, 245)),
+                constant: Some(Color::Rgb(255, 158, 100)),
+                attribute: Some(Color::Rgb(187, 154, 247)),
+                error: Some(Color::Rgb(247, 118, 142)),
             },
         }
     }

@@ -778,10 +778,22 @@ In-window menu item clicked (Windows/Linux)
 
 ### Default Window Size
 
-`led-gui` starts with a default window size optimized for readability, roughly equivalent to a 120-column by 35-row terminal:
-- **Width**: ~1000px (calculated as 120 columns * 8.4px character width)
-- **Height**: ~830px (calculated as 35 rows * 22px line height + Tab Bar + Status Bar + padding)
+`led-gui` starts with a default window size optimized for readability:
+- **Width**: 1008px
+- **Height**: 826px
 - **Position**: Centered on the primary display at startup.
+
+### Theme Selection
+
+`led` aims to feel native to its environment by following system-level theme preferences:
+
+- **TUI (`led`)**:
+  - Uses the `terminal-default` theme by default, which maps to the terminal's native background and foreground colors (using ANSI escape codes for Reset and standard 16 colors for syntax highlighting).
+  - If a specific theme is selected in `config.toml`, it overrides the terminal defaults.
+- **GUI (`led-gui`)**:
+  - Automatically detects the OS light/dark mode preference on startup if `theme` in `config.toml` is set to `terminal-default` or left empty.
+  - Defaults to `Tokyo Night` (dark) for dark mode and `Catppuccin Latte` for light mode.
+  - User-selected themes in `config.toml` take precedence.
 
 ### Architecture
 

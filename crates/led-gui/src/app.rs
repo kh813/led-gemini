@@ -1,6 +1,7 @@
 use gpui::*;
 use led_core::config::Config;
 use led_core::i18n::I18n;
+use led_core::theme::Theme;
 use crate::window_view::WindowView;
 use crate::workspace::Workspace;
 use anyhow::Result;
@@ -90,7 +91,7 @@ pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Ve
                 if let Some(files) = files {
                     let paths: Vec<_> = files.into_iter().map(|f| f.path().to_path_buf()).collect();
                     cx.update(|cx| {
-                        cx.open_window(WindowOptions::default(), move |window, cx| {
+                        cx.open_window(centered_window_options(cx), move |window, cx| {
                             let workspace = cx.new(|_| {
                                 let mut w = Workspace::new(config.clone());
                                 for path in paths {
@@ -111,7 +112,7 @@ pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Ve
     let i18n_about = i18n.clone();
     app.on_action(move |_: &About, cx| {
         let i18n = i18n_about.clone();
-        cx.open_window(WindowOptions::default(), move |window, cx| {
+        cx.open_window(centered_window_options(cx), move |window, cx| {
             let workspace = cx.new(|_| Workspace::new(Config::default()));
             cx.new(|cx| {
                 let mut view = WindowView::new(Config::default(), i18n.clone(), workspace, window, cx);
@@ -161,31 +162,78 @@ pub fn setup_app(app: &mut App, rx: futures::channel::mpsc::UnboundedReceiver<Ve
     }).detach();
 }
 
-pub fn new_window(config: Config, i18n: I18n, cx: &mut App) {
-    let options = WindowOptions {
+fn centered_window_options(cx: &App) -> WindowOptions {
+    let window_size = size(px(1008.0), px(826.0));
+    let mut origin = Point::default();
+    if let Some(display) = cx.primary_display() {
+        let display_bounds = display.bounds();
+        origin.x = display_bounds.origin.x + (display_bounds.size.width - window_size.width) / 2.0;
+        origin.y = display_bounds.origin.y + (display_bounds.size.height - window_size.height) / 2.0;
+    }
+
+    WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: Point::default(),
-            size: size(px(1008.0), px(826.0)),
+            origin,
+            size: window_size,
         })),
         ..Default::default()
+    }
+}
+
+pub fn new_window(config: Config, i18n: I18n, cx: &mut App) {
+    let themes = Theme::builtins();
+    
+    let theme_to_use = if config.theme == "terminal-default" || config.theme.is_empty() {
+        match cx.window_appearance() {
+            WindowAppearance::Dark | WindowAppearance::VibrantDark => {
+                themes.iter().find(|t| t.meta.name == "Tokyo Night").cloned().unwrap_or_else(Theme::default)
+            }
+            WindowAppearance::Light | WindowAppearance::VibrantLight => {
+                themes.iter().find(|t| t.meta.name == "Catppuccin Latte").cloned().unwrap_or_else(Theme::default)
+            }
+        }
+    } else {
+        themes.iter()
+            .find(|t| t.meta.name.to_lowercase().replace(" ", "-") == config.theme.to_lowercase())
+            .cloned()
+            .unwrap_or_else(Theme::default)
     };
+
+    let options = centered_window_options(cx);
     cx.open_window(options, move |window, cx| {
-        let workspace = cx.new(|_| Workspace::new(config.clone()));
+        let workspace = cx.new(|_| {
+            let mut w = Workspace::new(config.clone());
+            w.theme = theme_to_use;
+            w
+        });
         cx.new(|cx| WindowView::new(config, i18n, workspace, window, cx))
     }).expect("Failed to open window");
 }
 
 pub fn open_paths(paths: Vec<std::path::PathBuf>, config: Config, i18n: I18n, cx: &mut App) {
-    let options = WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: Point::default(),
-            size: size(px(1008.0), px(826.0)),
-        })),
-        ..Default::default()
+    let themes = Theme::builtins();
+    
+    let theme_to_use = if config.theme == "terminal-default" || config.theme.is_empty() {
+        match cx.window_appearance() {
+            WindowAppearance::Dark | WindowAppearance::VibrantDark => {
+                themes.iter().find(|t| t.meta.name == "Tokyo Night").cloned().unwrap_or_else(Theme::default)
+            }
+            WindowAppearance::Light | WindowAppearance::VibrantLight => {
+                themes.iter().find(|t| t.meta.name == "Catppuccin Latte").cloned().unwrap_or_else(Theme::default)
+            }
+        }
+    } else {
+        themes.iter()
+            .find(|t| t.meta.name.to_lowercase().replace(" ", "-") == config.theme.to_lowercase())
+            .cloned()
+            .unwrap_or_else(Theme::default)
     };
+
+    let options = centered_window_options(cx);
     cx.open_window(options, move |window, cx| {
         let workspace = cx.new(|_| {
             let mut w = Workspace::new(config.clone());
+            w.theme = theme_to_use;
             let mut opened_any = false;
             for path in paths {
                 if let Ok(editor) = led_core::buffer::Editor::from_file(&path) {
@@ -193,13 +241,12 @@ pub fn open_paths(paths: Vec<std::path::PathBuf>, config: Config, i18n: I18n, cx
                     opened_any = true;
                 }
             }
-            if opened_any && w.editors.len() > 1 {
-                w.editors.remove(0);
-                w.active_editor_index = w.editors.len() - 1;
+            if !opened_any {
+                w.add_editor(led_core::buffer::Editor::new());
             }
             w
         });
-        cx.new(|cx| WindowView::new(config.clone(), i18n.clone(), workspace, window, cx))
+        cx.new(|cx| WindowView::new(config, i18n, workspace, window, cx))
     }).expect("Failed to open window");
 }
 

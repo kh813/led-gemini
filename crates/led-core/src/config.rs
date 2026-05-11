@@ -18,7 +18,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             language: "en".to_string(),
-            theme: "tokyo-night".to_string(),
+            theme: "terminal-default".to_string(),
             line_numbers: true,
             vi_mode: false,
             word_wrap: false,

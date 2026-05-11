@@ -13,10 +13,13 @@
   - [x] Implement `Tab` navigation
   - [x] Ensure it appears when closing any modified buffer or quitting with any modified buffer
 - [x] Fix Menu "Exit" action behavior
+- [x] Improve TUI "Terminal Default" theme to match terminal color scheme (ANSI 16 colors)
 - [ ] Improve Japanese inline input (investigate/enable if possible)
 
 ### GUI Fixes
 - [ ] Fix editor visibility parity with TUI
+- [x] Fix default window position (center on screen)
+- [x] Fix automatic theme selection (OS light/dark mode)
 - [ ] Fix color visibility:
   - [x] Unify `led_color_to_gpui` across all widgets using `gpui::rgb`.
   - [ ] Ensure `EditorView` uses consistent color mapping for text and background.

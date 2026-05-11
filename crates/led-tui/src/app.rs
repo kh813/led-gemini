@@ -184,11 +184,26 @@ impl App {
         Ok(app)
     }
 
-    fn to_ct_color(c: led_core::theme::Color) -> crossterm::style::Color {
-        crossterm::style::Color::Rgb { r: c.0, g: c.1, b: c.2 }
+    fn to_ct_color(&self, c: led_core::theme::Color) -> crossterm::style::Color {
+        if self.theme.meta.name == "Terminal Default" {
+            match c {
+                led_core::theme::Color::Rgb(0, 0, 0) | led_core::theme::Color::Rgb(255, 255, 255) => {
+                    return crossterm::style::Color::Reset;
+                }
+                led_core::theme::Color::Ansi(i) => {
+                    return crossterm::style::Color::AnsiValue(i);
+                }
+                _ => {}
+            }
+        }
+        match c {
+            led_core::theme::Color::Rgb(r, g, b) => crossterm::style::Color::Rgb { r, g, b },
+            led_core::theme::Color::Ansi(i) => crossterm::style::Color::AnsiValue(i),
+        }
     }
 
-    fn get_token_color(theme: &led_core::theme::Theme, token: led_core::syntax::TokenType) -> Color {
+    fn get_token_color(&self, token: led_core::syntax::TokenType) -> Color {
+        let theme = &self.theme;
         let color = match token {
             led_core::syntax::TokenType::Keyword => theme.syntax.keyword,
             led_core::syntax::TokenType::TypeName => theme.syntax.type_name,
@@ -202,7 +217,7 @@ impl App {
             led_core::syntax::TokenType::Attribute => theme.syntax.attribute,
             led_core::syntax::TokenType::Error => theme.syntax.error,
         };
-        Self::to_ct_color(color.unwrap_or(theme.editor.foreground))
+        self.to_ct_color(color.unwrap_or(theme.editor.foreground))
     }
 
     fn detect_syntax(&self, path: &std::path::Path) -> Option<led_core::syntax::SyntaxHighlighter> {
@@ -2015,10 +2030,10 @@ impl App {
 
     fn render_menu(&mut self) {
         let (x, y, w, _h) = self.layout.menu_bounds();
-        let bg = Self::to_ct_color(self.theme.ui.menu_bar_bg);
-        let fg = Self::to_ct_color(self.theme.ui.menu_bar_fg);
-        let active_bg = Self::to_ct_color(self.theme.ui.menu_item_active_bg);
-        let active_fg = Self::to_ct_color(self.theme.ui.menu_item_active_fg);
+        let bg = self.to_ct_color(self.theme.ui.menu_bar_bg);
+        let fg = self.to_ct_color(self.theme.ui.menu_bar_fg);
+        let active_bg = self.to_ct_color(self.theme.ui.menu_item_active_bg);
+        let active_fg = self.to_ct_color(self.theme.ui.menu_item_active_fg);
         
         // Background
         for dx in 0..w {
@@ -2061,10 +2076,10 @@ impl App {
         }).max().unwrap_or(10) as u16;
         max_width += 2; // Padding
 
-        let bg = Self::to_ct_color(self.theme.ui.menu_bar_bg);
-        let fg = Self::to_ct_color(self.theme.ui.menu_bar_fg);
-        let active_bg = Self::to_ct_color(self.theme.ui.menu_item_active_bg);
-        let active_fg = Self::to_ct_color(self.theme.ui.menu_item_active_fg);
+        let bg = self.to_ct_color(self.theme.ui.menu_bar_bg);
+        let fg = self.to_ct_color(self.theme.ui.menu_bar_fg);
+        let active_bg = self.to_ct_color(self.theme.ui.menu_item_active_bg);
+        let active_fg = self.to_ct_color(self.theme.ui.menu_item_active_fg);
 
         let is_current_level = depth == self.submenu_stack.len();
         let selected_at_this_level = if depth < self.submenu_stack.len() {
@@ -2149,11 +2164,11 @@ impl App {
 
     fn render_tabs(&mut self) {
         let (x, y, w, _h) = self.layout.tab_bounds();
-        let bg = Self::to_ct_color(self.theme.ui.tab_bar_bg);
-        let active_bg = Self::to_ct_color(self.theme.ui.tab_active_bg);
-        let active_fg = Self::to_ct_color(self.theme.ui.tab_active_fg);
-        let inactive_bg = Self::to_ct_color(self.theme.ui.tab_inactive_bg);
-        let inactive_fg = Self::to_ct_color(self.theme.ui.tab_inactive_fg);
+        let bg = self.to_ct_color(self.theme.ui.tab_bar_bg);
+        let active_bg = self.to_ct_color(self.theme.ui.tab_active_bg);
+        let active_fg = self.to_ct_color(self.theme.ui.tab_active_fg);
+        let inactive_bg = self.to_ct_color(self.theme.ui.tab_inactive_bg);
+        let inactive_fg = self.to_ct_color(self.theme.ui.tab_inactive_fg);
         
         // Background
         for dx in 0..w {
@@ -2218,11 +2233,11 @@ impl App {
 
         use crate::widgets::find_panel::PanelField;
 
-        let normal_bg = Self::to_ct_color(self.theme.ui.panel_bg);
-        let normal_fg = Self::to_ct_color(self.theme.ui.panel_fg);
-        let focused_bg = Self::to_ct_color(self.theme.ui.button_active_bg);
-        let focused_fg = Self::to_ct_color(self.theme.ui.button_active_fg);
-        let error_fg = Self::to_ct_color(self.theme.ui.panel_error_fg);
+        let normal_bg = self.to_ct_color(self.theme.ui.panel_bg);
+        let normal_fg = self.to_ct_color(self.theme.ui.panel_fg);
+        let focused_bg = self.to_ct_color(self.theme.ui.button_active_bg);
+        let focused_fg = self.to_ct_color(self.theme.ui.button_active_fg);
+        let error_fg = self.to_ct_color(self.theme.ui.panel_error_fg);
 
         // Background
         for dy in 0..h {
@@ -2345,10 +2360,10 @@ impl App {
 
     fn render_toggles(&mut self, x: u16, y: u16) {
         use crate::widgets::find_panel::PanelField;
-        let normal_bg = Self::to_ct_color(self.theme.ui.panel_bg);
-        let normal_fg = Self::to_ct_color(self.theme.ui.panel_fg);
-        let focused_bg = Self::to_ct_color(self.theme.ui.button_active_bg);
-        let focused_fg = Self::to_ct_color(self.theme.ui.button_active_fg);
+        let normal_bg = self.to_ct_color(self.theme.ui.panel_bg);
+        let normal_fg = self.to_ct_color(self.theme.ui.panel_fg);
+        let focused_bg = self.to_ct_color(self.theme.ui.button_active_bg);
+        let focused_fg = self.to_ct_color(self.theme.ui.button_active_fg);
 
         let mut cur_x = x + 1;
         
@@ -2391,18 +2406,29 @@ impl App {
     fn render_editor(&mut self) {
         let (ex, ey, ew, eh) = self.layout.editor_bounds();
         let (_gx, _gy, gw, gh) = self.layout.gutter_bounds();
-        let buffer = &mut self.buffers[self.active_buffer];
+        let active_buffer_idx = self.active_buffer;
         let word_wrap = self.config.word_wrap;
         let tab_size = self.config.tab_size as usize;
 
-        let editor_bg = Self::to_ct_color(self.theme.editor.background);
-        let editor_fg = Self::to_ct_color(self.theme.editor.foreground);
+        let editor_bg = self.to_ct_color(self.theme.editor.background);
+        let editor_fg = self.to_ct_color(self.theme.editor.foreground);
         let gutter_bg = editor_bg;
-        let gutter_fg = Self::to_ct_color(self.theme.editor.line_number);
-        let selection_bg = Self::to_ct_color(self.theme.editor.selection);
+        let gutter_fg = self.to_ct_color(self.theme.editor.line_number);
+        let selection_bg = self.to_ct_color(self.theme.editor.selection);
         let selection_fg = editor_fg;
+        let cursor_bg = self.to_ct_color(self.theme.editor.cursor);
 
-        let current_line_bg = self.theme.editor.current_line.map(Self::to_ct_color).unwrap_or(editor_bg);
+        let current_line_bg = self.theme.editor.current_line.map(|c| self.to_ct_color(c)).unwrap_or(editor_bg);
+
+        let mut token_colors = std::collections::HashMap::new();
+        use led_core::syntax::TokenType::*;
+        for &t in &[Keyword, TypeName, Function, String, Number, Comment, Operator, Punctuation, Constant, Attribute, Error] {
+            token_colors.insert(t, self.get_token_color(t));
+        }
+
+        let focus = self.focus;
+        let App { ref mut renderer, ref mut buffers, .. } = *self;
+        let buffer = &mut buffers[active_buffer_idx];
 
         if word_wrap {
             // Word Wrap rendering
@@ -2417,7 +2443,7 @@ impl App {
                 let line_start_char = buffer.rope.line_to_char(logical_line_idx);
                 let tokens = buffer.highlight_line(logical_line_idx);
 
-                let is_current_line = logical_line_idx == cursor_line && self.focus == Focus::Editor;
+                let is_current_line = logical_line_idx == cursor_line && focus == Focus::Editor;
 
                 for (v_idx, range) in wraps.iter().enumerate().skip(vrow_offset) {
                     if rendered_rows >= eh { break; }
@@ -2428,13 +2454,13 @@ impl App {
                     // Render gutter for the FIRST visual line of each logical line
                     if gw > 0 {
                         for dx in 0..gw {
-                            self.renderer.set_cell(_gx + dx, ry, Cell { ch: ' ', bg: gutter_bg, ..Default::default() });
+                            renderer.set_cell(_gx + dx, ry, Cell { ch: ' ', bg: gutter_bg, ..Default::default() });
                         }
                         if v_idx == 0 {
                             let line_num = (logical_line_idx + 1).to_string();
                             let num_x = _gx + gw - line_num.len() as u16 - 2;
                             for (i, c) in line_num.chars().enumerate() {
-                                self.renderer.set_cell(num_x + i as u16, ry, Cell { ch: c, bg: gutter_bg, fg: gutter_fg, ..Default::default() });
+                                renderer.set_cell(num_x + i as u16, ry, Cell { ch: c, bg: gutter_bg, fg: gutter_fg, ..Default::default() });
                             }
                         }
                     }
@@ -2469,7 +2495,7 @@ impl App {
                             current_token_idx += 1;
                         }
                         if current_token_idx < tokens.len() && tokens[current_token_idx].byte_range.start <= byte_offset {
-                            fg = Self::get_token_color(&self.theme, tokens[current_token_idx].token);
+                            fg = *token_colors.get(&tokens[current_token_idx].token).unwrap_or(&editor_fg);
                         }
 
                         if let Some(ref r) = buffer.selection {
@@ -2493,23 +2519,23 @@ impl App {
                             }
                         }
 
-                        if char_idx == buffer.cursor && self.focus == Focus::Editor {
-                            bg = Self::to_ct_color(self.theme.editor.cursor);
+                        if char_idx == buffer.cursor && focus == Focus::Editor {
+                            bg = cursor_bg;
                             fg = editor_bg;
                         }
 
                         if c == '\t' {
-                            self.renderer.set_cell(ex + visual_x, ry, Cell { ch: ' ', bg, fg, width: char_w as u8, ..Default::default() });
+                            renderer.set_cell(ex + visual_x, ry, Cell { ch: ' ', bg, fg, width: char_w as u8, ..Default::default() });
                         } else if c != '\n' && c != '\r' {
-                            self.renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, width: char_w as u8, ..Default::default() });
+                            renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, width: char_w as u8, ..Default::default() });
                         } else {
                             // End of logical line, might show cursor/selection
-                            if char_idx == buffer.cursor && self.focus == Focus::Editor {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, width: 1, ..Default::default() });
+                            if char_idx == buffer.cursor && focus == Focus::Editor {
+                                renderer.set_cell(rx, ry, Cell { ch: ' ', bg: cursor_bg, fg: editor_bg, width: 1, ..Default::default() });
                             } else if bg != line_bg {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, width: 1, ..Default::default() });
+                                renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, width: 1, ..Default::default() });
                             } else if is_current_line {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: line_bg, fg, width: 1, ..Default::default() });
+                                renderer.set_cell(rx, ry, Cell { ch: ' ', bg: line_bg, fg, width: 1, ..Default::default() });
                             }
                         }
                         visual_x += char_w;
@@ -2521,14 +2547,14 @@ impl App {
                          let last_char_idx = line_start_char + line_slice.len_chars();
                          let ends_with_newline = line_slice.len_chars() > 0 && (line_slice.char(line_slice.len_chars()-1) == '\n' || line_slice.char(line_slice.len_chars()-1) == '\r');
                          if !ends_with_newline && buffer.cursor == last_char_idx && visual_x < ew {
-                             self.renderer.set_cell(ex + visual_x, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
+                             renderer.set_cell(ex + visual_x, ry, Cell { ch: ' ', bg: cursor_bg, fg: editor_bg, ..Default::default() });
                              visual_x += 1;
                          }
                     }
 
                     // Clear rest of row
                     for dx in visual_x..ew {
-                        self.renderer.set_cell(ex + dx, ry, Cell { ch: ' ', bg: line_bg, fg: editor_fg, ..Default::default() });
+                        renderer.set_cell(ex + dx, ry, Cell { ch: ' ', bg: line_bg, fg: editor_fg, ..Default::default() });
                     }
 
                     rendered_rows += 1;
@@ -2541,11 +2567,11 @@ impl App {
             for dy in rendered_rows..eh {
                 if gw > 0 {
                     for dx in 0..gw {
-                        self.renderer.set_cell(_gx + dx, ey + dy, Cell { ch: ' ', bg: gutter_bg, ..Default::default() });
+                        renderer.set_cell(_gx + dx, ey + dy, Cell { ch: ' ', bg: gutter_bg, ..Default::default() });
                     }
                 }
                 for dx in 0..ew {
-                    self.renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: editor_bg, ..Default::default() });
+                    renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: editor_bg, ..Default::default() });
                 }
             }
         } else {
@@ -2555,13 +2581,13 @@ impl App {
                 for dy in 0..gh {
                     let line_idx = buffer.scroll_row + dy as usize;
                     for dx in 0..gw {
-                        self.renderer.set_cell(_gx + dx, _gy + dy, Cell { ch: ' ', bg: gutter_bg, ..Default::default() });
+                        renderer.set_cell(_gx + dx, _gy + dy, Cell { ch: ' ', bg: gutter_bg, ..Default::default() });
                     }
                     if line_idx < buffer.line_count() {
                         let line_num = (line_idx + 1).to_string();
                         let num_x = _gx + gw - line_num.len() as u16 - 2;
                         for (i, c) in line_num.chars().enumerate() {
-                            self.renderer.set_cell(num_x + i as u16, _gy + dy, Cell { ch: c, bg: gutter_bg, fg: gutter_fg, ..Default::default() });
+                            renderer.set_cell(num_x + i as u16, _gy + dy, Cell { ch: c, bg: gutter_bg, fg: gutter_fg, ..Default::default() });
                         }
                     }
                 }
@@ -2573,12 +2599,12 @@ impl App {
                 let line_idx = buffer.scroll_row + dy as usize;
                 if line_idx >= buffer.line_count() {
                     for dx in 0..ew {
-                        self.renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: editor_bg, ..Default::default() });
+                        renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: editor_bg, ..Default::default() });
                     }
                     continue;
                 }
 
-                let is_current_line = line_idx == cursor_line && self.focus == Focus::Editor;
+                let is_current_line = line_idx == cursor_line && focus == Focus::Editor;
                 let line_bg = if is_current_line { current_line_bg } else { editor_bg };
 
                 let tokens = buffer.highlight_line(line_idx);
@@ -2591,7 +2617,7 @@ impl App {
                 for c in line.chars() {
                     let char_len = c.len_utf8();
                     let char_w = if c == '\t' {
-                        let tab_size = self.config.tab_size as u16;
+                        let tab_size = tab_size as u16;
                         tab_size - (visual_x % tab_size)
                     } else {
                         c.width().unwrap_or(0) as u16
@@ -2612,7 +2638,7 @@ impl App {
                             current_token_idx += 1;
                         }
                         if current_token_idx < tokens.len() && tokens[current_token_idx].byte_range.start <= byte_offset {
-                            fg = Self::get_token_color(&self.theme, tokens[current_token_idx].token);
+                            fg = *token_colors.get(&tokens[current_token_idx].token).unwrap_or(&editor_fg);
                         }
 
                         if let Some(ref range) = buffer.selection {
@@ -2636,8 +2662,8 @@ impl App {
                             }
                         }
 
-                        if char_idx == buffer.cursor && self.focus == Focus::Editor {
-                            bg = Self::to_ct_color(self.theme.editor.cursor);
+                        if char_idx == buffer.cursor && focus == Focus::Editor {
+                            bg = cursor_bg;
                             fg = editor_bg;
                         }
 
@@ -2645,20 +2671,20 @@ impl App {
                             for dx in 0..char_w {
                                 let vx = visual_x + dx;
                                 if vx >= buffer.scroll_col as u16 && vx < buffer.scroll_col as u16 + ew {
-                                    self.renderer.set_cell(ex + (vx - buffer.scroll_col as u16), ry, Cell { ch: ' ', bg, fg, width: 1, ..Default::default() });
+                                    renderer.set_cell(ex + (vx - buffer.scroll_col as u16), ry, Cell { ch: ' ', bg, fg, width: 1, ..Default::default() });
                                 }
                             }
                         } else if c != '\n' && c != '\r' {
                             let rx = ex + (visual_x.saturating_sub(buffer.scroll_col as u16));
                             let ry = ey + dy;
-                            self.renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, width: char_w as u8, ..Default::default() });
+                            renderer.set_cell(rx, ry, Cell { ch: c, bg, fg, width: char_w as u8, ..Default::default() });
                         } else {
-                            if char_idx == buffer.cursor && self.focus == Focus::Editor {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
+                            if char_idx == buffer.cursor && focus == Focus::Editor {
+                                renderer.set_cell(rx, ry, Cell { ch: ' ', bg: cursor_bg, fg: editor_bg, ..Default::default() });
                             } else if bg != line_bg {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, ..Default::default() });
+                                renderer.set_cell(rx, ry, Cell { ch: ' ', bg, fg, ..Default::default() });
                             } else if is_current_line {
-                                self.renderer.set_cell(rx, ry, Cell { ch: ' ', bg: line_bg, fg, ..Default::default() });
+                                renderer.set_cell(rx, ry, Cell { ch: ' ', bg: line_bg, fg, ..Default::default() });
                             }
                         }
                     }
@@ -2672,13 +2698,13 @@ impl App {
                      let ends_with_newline = line.len_chars() > 0 && (line.char(line.len_chars()-1) == '\n' || line.char(line.len_chars()-1) == '\r');
                      if !ends_with_newline && buffer.cursor == last_char_idx {
                          if visual_x >= buffer.scroll_col as u16 && visual_x < buffer.scroll_col as u16 + ew {
-                             self.renderer.set_cell(ex + (visual_x - buffer.scroll_col as u16), ey + dy, Cell { ch: ' ', bg: Self::to_ct_color(self.theme.editor.cursor), fg: editor_bg, ..Default::default() });
+                             renderer.set_cell(ex + (visual_x - buffer.scroll_col as u16), ey + dy, Cell { ch: ' ', bg: cursor_bg, fg: editor_bg, ..Default::default() });
                              visual_x += 1;
                          }
                      }
                 }
                 for dx in (visual_x.saturating_sub(buffer.scroll_col as u16))..ew {
-                    self.renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: line_bg, fg: editor_fg, ..Default::default() });
+                    renderer.set_cell(ex + dx, ey + dy, Cell { ch: ' ', bg: line_bg, fg: editor_fg, ..Default::default() });
                 }
 
             }
@@ -2688,8 +2714,8 @@ impl App {
     fn render_status(&mut self) {
         let (x, y, w, _h) = self.layout.status_bounds();
         let buffer = &self.buffers[self.active_buffer];
-        let bg = Self::to_ct_color(self.theme.ui.status_bar_bg);
-        let fg = Self::to_ct_color(self.theme.ui.status_bar_fg);
+        let bg = self.to_ct_color(self.theme.ui.status_bar_bg);
+        let fg = self.to_ct_color(self.theme.ui.status_bar_fg);
 
         // Background
         for dx in 0..w {
